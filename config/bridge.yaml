@@ -1,0 +1,16 @@
+# DEOS ROS 2 Bridge config
+
+# TODO:
+# stm32_ip: "..."
+# stm32_port: ...
+# local_port: ...
+
+# node_id: 0x04
+
+# TODO:
+# cmd_vel_timeout_ms: 200
+# autonomy_timeout_ms: 500
+# motion_timeout_ms: 250
+
+# TODO:
+# heartbeat_period_ms: ...
