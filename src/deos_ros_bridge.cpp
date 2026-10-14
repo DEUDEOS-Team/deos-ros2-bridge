@@ -20,8 +20,6 @@ DeosRosBridge::DeosRosBridge()
     // -----------------------------------------------------------------
     this->declare_parameter<double>("wheelbase", 2.0);
     this->declare_parameter<double>("max_steering_angle_rad", 0.60); // ~34.4 degrees
-    this->declare_parameter<std::string>("udp_bind_ip", "0.0.0.0");
-    this->declare_parameter<int>("udp_bind_port", 5000);
     this->declare_parameter<std::string>("udp_remote_ip", "192.168.1.10");
     this->declare_parameter<int>("udp_remote_port", 5001);
     this->declare_parameter<int>("heartbeat_period_ms", 1000);
@@ -32,8 +30,6 @@ DeosRosBridge::DeosRosBridge()
 
     wheelbase_ = this->get_parameter("wheelbase").as_double();
     max_steering_angle_rad_ = this->get_parameter("max_steering_angle_rad").as_double();
-    std::string bind_ip = this->get_parameter("udp_bind_ip").as_string();
-    int bind_port = this->get_parameter("udp_bind_port").as_int();
     std::string remote_ip = this->get_parameter("udp_remote_ip").as_string();
     int remote_port = this->get_parameter("udp_remote_port").as_int();
     int heartbeat_ms = this->get_parameter("heartbeat_period_ms").as_int();
@@ -99,13 +95,12 @@ DeosRosBridge::DeosRosBridge()
     // -----------------------------------------------------------------
     // 5. Initialize UDP Socket
     // -----------------------------------------------------------------
-    if (!udp_.init(bind_ip, static_cast<uint16_t>(bind_port),
-                   remote_ip, static_cast<uint16_t>(remote_port))) {
-        RCLCPP_ERROR(this->get_logger(), "Failed to initialize UDP transport on %s:%d -> %s:%d",
-                     bind_ip.c_str(), bind_port, remote_ip.c_str(), remote_port);
+    if (!udp_.init(remote_ip, static_cast<uint16_t>(remote_port))) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to initialize UDP transport targeting %s:%d",
+                     remote_ip.c_str(), remote_port);
     } else {
-        RCLCPP_INFO(this->get_logger(), "UDP Transport listening on %s:%d, remote target: %s:%d",
-                    bind_ip.c_str(), bind_port, remote_ip.c_str(), remote_port);
+        RCLCPP_INFO(this->get_logger(), "UDP Transport ready, target STM32: %s:%d",
+                    remote_ip.c_str(), remote_port);
     }
 
     udp_.set_rx_callback([this](const uint8_t* data, size_t length) {

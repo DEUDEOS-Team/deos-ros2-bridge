@@ -17,10 +17,9 @@ public:
     UdpTransport& operator=(const UdpTransport&) = delete;
 
     /**
-     * @brief Initialize UDP socket and target endpoints
+     * @brief Initialize UDP socket targeting the STM32 (no local bind needed)
      */
-    bool init(const std::string& bind_ip, uint16_t bind_port,
-              const std::string& remote_ip, uint16_t remote_port);
+    bool init(const std::string& remote_ip, uint16_t remote_port);
 
     /**
      * @brief Send raw buffer over UDP to the remote address

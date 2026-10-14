@@ -1,7 +1,6 @@
 # DEOS ROS 2 Bridge Configuration
 stm32_ip: "192.168.1.10"
 stm32_port: 5001
-local_port: 5000
 
 node_id: 0x04 # DEOS_NODE_MICRO_ROS
 

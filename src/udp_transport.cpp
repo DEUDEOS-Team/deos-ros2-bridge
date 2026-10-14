@@ -14,8 +14,7 @@ UdpTransport::~UdpTransport() {
     close();
 }
 
-bool UdpTransport::init(const std::string& bind_ip, uint16_t bind_port,
-                        const std::string& remote_ip, uint16_t remote_port) 
+bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port) 
 {
     close();
 
@@ -25,29 +24,7 @@ bool UdpTransport::init(const std::string& bind_ip, uint16_t bind_port,
         return false;
     }
 
-    // Allow quick reuse of the address/port
-    int opt = 1;
-    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-
-    // Bind local address
-    struct sockaddr_in bind_addr;
-    std::memset(&bind_addr, 0, sizeof(bind_addr));
-    bind_addr.sin_family = AF_INET;
-    bind_addr.sin_port = htons(bind_port);
-    if (bind_ip.empty() || bind_ip == "0.0.0.0") {
-        bind_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    } else {
-        inet_pton(AF_INET, bind_ip.c_str(), &bind_addr.sin_addr);
-    }
-
-    if (bind(fd, (struct sockaddr*)&bind_addr, sizeof(bind_addr)) < 0) {
-        std::cerr << "[UdpTransport] Failed to bind to " << bind_ip << ":" << bind_port 
-                  << " - " << std::strerror(errno) << std::endl;
-        ::close(fd);
-        return false;
-    }
-
-    // Set remote address
+    // Set remote address (STM32)
     std::memset(&remote_addr_, 0, sizeof(remote_addr_));
     remote_addr_.sin_family = AF_INET;
     remote_addr_.sin_port = htons(remote_port);
@@ -58,8 +35,7 @@ bool UdpTransport::init(const std::string& bind_ip, uint16_t bind_port,
     }
 
     socket_fd_ = fd;
-    std::cout << "[UdpTransport] Bound to " << bind_ip << ":" << bind_port 
-              << ", target STM32 at " << remote_ip << ":" << remote_port << std::endl;
+    std::cout << "[UdpTransport] Socket ready, remote target: " << remote_ip << ":" << remote_port << std::endl;
     return true;
 }
 

@@ -2,8 +2,6 @@ deos_ros_bridge:
   ros__parameters:
     wheelbase: 2.0
     max_steering_angle_rad: 0.60
-    udp_bind_ip: "0.0.0.0"
-    udp_bind_port: 5000
     udp_remote_ip: "192.168.1.10"
     udp_remote_port: 5001
     heartbeat_period_ms: 1000
