@@ -1,7 +1,7 @@
 # DEOS ROS 2 Bridge TODO
 
 ## Aşama 1 - ROS 2 Interface
-- [x] Publisher listesi (`/sensors/imu/data`, `/vehicle/state/speed`, `/vehicle/state/steering_angle`, `/vehicle/state/system_state`, `/vehicle/bms/*`)
+- [x] Publisher listesi (`/sensors/imu/data`, `/vehicle/state/speed`, `/vehicle/state/steering_angle`, `/vehicle/state_machine/state`, `/vehicle/bms/*`)
 - [x] Subscriber listesi (`/cmd_vel`, `/vehicle/autonomy_enable`, `/vehicle/motion_enable`, `/vehicle/set_state`, `/vehicle/lights/*`, `/vehicle/signals/*`)
 - [x] QoS ayarları (Best Effort telemetry / Reliable commands)
 - [x] Timeout timer'ları ve Safety Watchdog (cmd_vel 200ms, autonomy 500ms, motion 250ms)

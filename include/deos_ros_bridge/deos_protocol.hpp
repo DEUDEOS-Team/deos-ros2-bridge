@@ -43,7 +43,6 @@
 #define DEOS_NODE_STEERING       0x11
 #define DEOS_NODE_BRAKE          0x12
 #define DEOS_NODE_IMU            0x13
-#define DEOS_NODE_LIGHTING       0x14
 #define DEOS_NODE_BMS_MAIN       0x20
 #define DEOS_NODE_BMS_AUX        0x21
 #define DEOS_NODE_BMS_GATEWAY    0x30
@@ -84,12 +83,11 @@
 #define DEOS_CMD_SENSOR_IMU_DATA           0x01
 
 // Lighting Commands
-#define DEOS_CMD_LIGHTING_SET_STATE        0x01
-#define DEOS_CMD_LIGHTING_TURN_ON          0x02
-#define DEOS_CMD_LIGHTING_TURN_OFF         0x03
-#define DEOS_CMD_LIGHTING_SET_ALL          0x04
-#define DEOS_CMD_LIGHTING_GET_STATUS       0x05
-#define DEOS_CMD_LIGHTING_STATUS           0x06
+#define DEOS_CMD_LIGHTING_TURN_ON          0x01
+#define DEOS_CMD_LIGHTING_TURN_OFF         0x02
+#define DEOS_CMD_LIGHTING_SET_ALL          0x03
+#define DEOS_CMD_LIGHTING_GET_STATUS       0x04
+#define DEOS_CMD_LIGHTING_STATUS           0x05
 
 // Light IDs
 #define DEOS_LIGHT_NONE                    0x00
@@ -228,10 +226,9 @@ struct deos_sensor_imu_payload_t {
     int16_t mag_z;
 };
 
-// Lighting Command Payload (2 bytes)
+// Lighting Command Payload (1 byte: light_id)
 struct deos_lighting_command_payload_t {
     uint8_t light_id;   // deos_light_id_t
-    uint8_t state;      // deos_light_state_t
 };
 
 // BMS Status Payload
