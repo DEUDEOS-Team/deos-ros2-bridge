@@ -88,5 +88,5 @@ private:
                          uint8_t destination, uint8_t command,
                          const void* payload, uint8_t payload_length);
     void handle_ping(uint8_t src_node, const uint8_t* payload, uint8_t payload_len);
-    void set_light_state(uint8_t light_id, bool enable, bool blink = false);
+    void set_light_state(uint8_t light_id, bool enable);
 };

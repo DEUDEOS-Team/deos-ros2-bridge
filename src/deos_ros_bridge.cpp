@@ -88,7 +88,7 @@ DeosRosBridge::DeosRosBridge()
     speed_pub_ = this->create_publisher<std_msgs::msg::Float32>("/vehicle/state/speed", telemetry_qos);
     steering_angle_pub_ = this->create_publisher<std_msgs::msg::Float32>("/vehicle/state/steering_angle", telemetry_qos);
     imu_pub_ = this->create_publisher<sensor_msgs::msg::Imu>("/sensors/imu/data", imu_qos);
-    system_state_pub_ = this->create_publisher<std_msgs::msg::UInt8>("/vehicle/state/system_state", telemetry_qos);
+    system_state_pub_ = this->create_publisher<std_msgs::msg::UInt8>("/vehicle/state_machine/state", telemetry_qos);
     bms_voltage_pub_ = this->create_publisher<std_msgs::msg::Float32>("/vehicle/bms/voltage", telemetry_qos);
     bms_soc_pub_ = this->create_publisher<std_msgs::msg::Float32>("/vehicle/bms/soc", telemetry_qos);
 
@@ -278,46 +278,39 @@ void DeosRosBridge::set_state_callback(const std_msgs::msg::UInt8::SharedPtr msg
     RCLCPP_INFO(this->get_logger(), "Sent SET_STATE command: 0x%02X to Main STM32", msg->data);
 }
 
-void DeosRosBridge::set_light_state(uint8_t light_id, bool enable, bool blink)
+void DeosRosBridge::set_light_state(uint8_t light_id, bool enable)
 {
-    deos_lighting_command_payload_t pl;
-    pl.light_id = light_id;
-    if (!enable) {
-        pl.state = DEOS_LIGHT_STATE_OFF;
-    } else if (blink) {
-        pl.state = DEOS_LIGHT_STATE_BLINK;
-    } else {
-        pl.state = DEOS_LIGHT_STATE_ON;
-    }
+    uint8_t cmd = enable ? DEOS_CMD_LIGHTING_TURN_ON : DEOS_CMD_LIGHTING_TURN_OFF;
+    uint8_t payload = light_id; // 1 byte light_id
 
     send_deos_frame(DEOS_PRIO_CONTROL, DEOS_CLASS_COMMAND, DEOS_SERVICE_LIGHTING,
-                    DEOS_NODE_LIGHTING, DEOS_CMD_LIGHTING_SET_STATE,
-                    &pl, sizeof(pl));
+                    DEOS_NODE_MAIN_STM32, cmd,
+                    &payload, sizeof(payload));
 }
 
 void DeosRosBridge::signals_right_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
-    set_light_state(DEOS_LIGHT_TURN_RIGHT, msg->data, true);
+    set_light_state(DEOS_LIGHT_TURN_RIGHT, msg->data);
 }
 
 void DeosRosBridge::signals_left_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
-    set_light_state(DEOS_LIGHT_TURN_LEFT, msg->data, true);
+    set_light_state(DEOS_LIGHT_TURN_LEFT, msg->data);
 }
 
 void DeosRosBridge::signals_hazard_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
-    set_light_state(DEOS_LIGHT_HAZARD, msg->data, true);
+    set_light_state(DEOS_LIGHT_HAZARD, msg->data);
 }
 
 void DeosRosBridge::lights_brake_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
-    set_light_state(DEOS_LIGHT_BRAKE, msg->data, false);
+    set_light_state(DEOS_LIGHT_BRAKE, msg->data);
 }
 
 void DeosRosBridge::lights_headlight_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
-    set_light_state(DEOS_LIGHT_HEADLIGHT, msg->data, false);
+    set_light_state(DEOS_LIGHT_HEADLIGHT, msg->data);
 }
 
 // ---------------------------------------------------------------------

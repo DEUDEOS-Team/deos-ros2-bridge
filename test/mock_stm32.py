@@ -23,7 +23,8 @@ DEOS_CMD_TRACTION_SET_TARGET_SPEED = 0x01
 DEOS_CMD_TRACTION_SET_GEAR = 0x04
 DEOS_CMD_STEERING_SET_TARGET_ANGLE = 0x01
 DEOS_CMD_SENSOR_IMU_DATA = 0x01
-DEOS_CMD_LIGHTING_SET_STATE = 0x01
+DEOS_CMD_LIGHTING_TURN_ON = 0x01
+DEOS_CMD_LIGHTING_TURN_OFF = 0x02
 
 def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -62,7 +63,9 @@ def main():
                         angle, ang_vel = struct.unpack('<hH', payload[:4])
                         print(f"  [RX Steering] Target Angle: {angle * 0.01:.2f} deg, AngVel: {ang_vel * 0.01:.2f} deg/s")
                     elif srv == DEOS_SERVICE_LIGHTING:
-                        print(f"  [RX Lighting] Cmd: 0x{cmd:02X}, Payload: {payload.hex()}")
+                        action = "TURN_ON" if cmd == DEOS_CMD_LIGHTING_TURN_ON else "TURN_OFF" if cmd == DEOS_CMD_LIGHTING_TURN_OFF else f"0x{cmd:02X}"
+                        light_id = payload[0] if len(payload) >= 1 else 0
+                        print(f"  [RX Lighting] Action: {action}, Light ID: 0x{light_id:02X}, Target Node: 0x{dst:02X}")
                     else:
                         print(f"  [RX DEOS] Srv: 0x{srv:02X}, Cmd: 0x{cmd:02X}, Len: {length}")
             except socket.timeout:
