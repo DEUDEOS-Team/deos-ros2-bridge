@@ -8,5 +8,6 @@ log/
 *.so
 *.a
 test/benchmark_stress_test
+test/unit_tests
 __pycache__/
 *.pyc

@@ -18,6 +18,10 @@ add_executable(deos_ros_bridge_node
   src/main.cpp
   src/deos_ros_bridge.cpp
   src/udp_transport.cpp
+  src/kinematics.cpp
+  src/safety_supervisor.cpp
+  src/deos_codec.cpp
+  src/message_dispatcher.cpp
 )
 
 target_include_directories(deos_ros_bridge_node PUBLIC

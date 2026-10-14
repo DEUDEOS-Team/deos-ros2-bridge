@@ -8,19 +8,34 @@
 #include <sensor_msgs/msg/imu.hpp>
 
 #include "deos_ros_bridge/deos_protocol.hpp"
+#include "deos_ros_bridge/transport_interface.hpp"
 #include "deos_ros_bridge/udp_transport.hpp"
+#include "deos_ros_bridge/kinematics.hpp"
+#include "deos_ros_bridge/safety_supervisor.hpp"
+#include "deos_ros_bridge/deos_codec.hpp"
+#include "deos_ros_bridge/message_dispatcher.hpp"
+
 #include <thread>
 #include <atomic>
-#include <mutex>
+#include <memory>
 
 class DeosRosBridge : public rclcpp::Node
 {
 public:
+    /**
+     * @brief Default Constructor: standard ROS 2 node initialization
+     */
     DeosRosBridge();
-    ~DeosRosBridge();
+
+    /**
+     * @brief Dependency-Injection Constructor (DIP): allows injecting custom/mock transport
+     */
+    explicit DeosRosBridge(std::shared_ptr<deos::ITransport> transport);
+
+    ~DeosRosBridge() override;
 
 private:
-    // ROS 2 Subscribers Callbacks (ROS 2 -> STM32)
+    // ROS 2 Subscribers Callbacks (ROS 2 -> Vehicle)
     void cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg);
     void autonomy_enable_callback(const std_msgs::msg::Bool::SharedPtr msg);
     void motion_enable_callback(const std_msgs::msg::Bool::SharedPtr msg);
@@ -33,7 +48,7 @@ private:
     void lights_brake_callback(const std_msgs::msg::Bool::SharedPtr msg);
     void lights_headlight_callback(const std_msgs::msg::Bool::SharedPtr msg);
 
-    // ROS 2 Publishers (STM32 -> ROS 2)
+    // ROS 2 Publishers (Vehicle -> ROS 2)
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr speed_pub_;
     rclcpp::Publisher<std_msgs::msg::Float32>::SharedPtr steering_angle_pub_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imu_pub_;
@@ -56,39 +71,23 @@ private:
     rclcpp::TimerBase::SharedPtr heartbeat_timer_;
     rclcpp::TimerBase::SharedPtr timeout_timer_;
 
-    // UDP Transport & Worker Thread
-    UdpTransport udp_;
+    // Core Domain Objects (OOP Components)
+    std::shared_ptr<deos::ITransport> transport_;
+    std::unique_ptr<deos::AckermannKinematics> kinematics_;
+    std::unique_ptr<deos::SafetySupervisor> safety_;
+    std::unique_ptr<deos::DeosCodec> codec_;
+    std::unique_ptr<deos::DeosMessageDispatcher> dispatcher_;
+
+    // Background Thread
     std::thread rx_thread_;
-    std::atomic<bool> running_;
+    std::atomic<bool> running_{true};
+    std::atomic<uint8_t> current_bridge_state_{DEOS_STATE_STANDBY};
 
-    // Protocol State & Thread-Safe Sequence Counter
-    std::mutex tx_mutex_;
-    std::atomic<uint8_t> tx_seq_;
-    std::atomic<uint8_t> current_bridge_state_;
-    
-    // Safety & Timeouts (Protected by safety_mutex_)
-    std::mutex safety_mutex_;
-    rclcpp::Time last_cmd_vel_time_;
-    rclcpp::Time last_autonomy_enable_time_;
-    rclcpp::Time last_motion_enable_time_;
-    
-    std::atomic<bool> is_autonomy_enabled_;
-    std::atomic<bool> is_motion_enabled_;
-    bool enable_safety_timeouts_;
-    std::atomic<bool> vehicle_stopped_on_timeout_;
-
-    // Vehicle Parameters
-    double wheelbase_;
-    double max_steering_angle_rad_;
-
-    // Internal Protocol Handlers
+    // Helper Methods
+    void init_node();
+    void init_handlers();
     void send_heartbeat();
     void check_timeouts();
-    void handle_udp_rx(const uint8_t* data, size_t length);
-    void process_deos_frame(const deos_header_t& header, const uint8_t* payload, uint8_t payload_len);
-    void send_deos_frame(uint8_t priority, uint8_t msg_class, uint8_t service,
-                         uint8_t destination, uint8_t command,
-                         const void* payload, uint8_t payload_length);
-    void handle_ping(uint8_t src_node, const uint8_t* payload, uint8_t payload_len);
+    void handle_incoming_data(const uint8_t* data, size_t length);
     void set_light_state(uint8_t light_id, bool enable);
 };

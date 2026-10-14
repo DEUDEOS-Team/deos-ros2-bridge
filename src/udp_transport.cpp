@@ -10,8 +10,37 @@ UdpTransport::UdpTransport() : socket_fd_(-1) {
     std::memset(&remote_addr_, 0, sizeof(remote_addr_));
 }
 
+UdpTransport::UdpTransport(const std::string& remote_ip, uint16_t remote_port)
+    : socket_fd_(-1)
+{
+    init(remote_ip, remote_port);
+}
+
 UdpTransport::~UdpTransport() {
     close();
+}
+
+UdpTransport::UdpTransport(UdpTransport&& other) noexcept
+    : remote_ip_(std::move(other.remote_ip_)),
+      remote_port_(other.remote_port_),
+      socket_fd_(other.socket_fd_.exchange(-1)),
+      remote_addr_(other.remote_addr_),
+      rx_callback_(std::move(other.rx_callback_))
+{
+    std::memset(&other.remote_addr_, 0, sizeof(other.remote_addr_));
+}
+
+UdpTransport& UdpTransport::operator=(UdpTransport&& other) noexcept {
+    if (this != &other) {
+        close();
+        remote_ip_ = std::move(other.remote_ip_);
+        remote_port_ = other.remote_port_;
+        socket_fd_.store(other.socket_fd_.exchange(-1));
+        remote_addr_ = other.remote_addr_;
+        rx_callback_ = std::move(other.rx_callback_);
+        std::memset(&other.remote_addr_, 0, sizeof(other.remote_addr_));
+    }
+    return *this;
 }
 
 bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port) 
@@ -34,7 +63,9 @@ bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port)
         return false;
     }
 
-    socket_fd_ = fd;
+    remote_ip_ = remote_ip;
+    remote_port_ = remote_port;
+    socket_fd_.store(fd);
     std::cout << "[UdpTransport] Socket ready, remote target: " << remote_ip << ":" << remote_port << std::endl;
     return true;
 }
