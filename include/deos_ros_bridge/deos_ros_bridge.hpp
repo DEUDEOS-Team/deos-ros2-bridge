@@ -61,19 +61,21 @@ private:
     std::thread rx_thread_;
     std::atomic<bool> running_;
 
-    // Protocol State
-    uint8_t tx_seq_;
-    uint8_t current_bridge_state_;
+    // Protocol State & Thread-Safe Sequence Counter
+    std::mutex tx_mutex_;
+    std::atomic<uint8_t> tx_seq_;
+    std::atomic<uint8_t> current_bridge_state_;
     
-    // Safety & Timeouts
+    // Safety & Timeouts (Protected by safety_mutex_)
+    std::mutex safety_mutex_;
     rclcpp::Time last_cmd_vel_time_;
     rclcpp::Time last_autonomy_enable_time_;
     rclcpp::Time last_motion_enable_time_;
     
-    bool is_autonomy_enabled_;
-    bool is_motion_enabled_;
+    std::atomic<bool> is_autonomy_enabled_;
+    std::atomic<bool> is_motion_enabled_;
     bool enable_safety_timeouts_;
-    bool vehicle_stopped_on_timeout_;
+    std::atomic<bool> vehicle_stopped_on_timeout_;
 
     // Vehicle Parameters
     double wheelbase_;

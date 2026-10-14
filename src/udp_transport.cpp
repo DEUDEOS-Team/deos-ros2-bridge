@@ -39,16 +39,37 @@ bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port)
     return true;
 }
 
-bool UdpTransport::send(const void* data, size_t length) {
+bool UdpTransport::send_iovec(const struct iovec* iov, size_t iovcnt) {
     int fd = socket_fd_.load();
-    if (fd < 0 || data == nullptr || length == 0) {
+    if (fd < 0 || iov == nullptr || iovcnt == 0) {
         return false;
     }
 
+    struct msghdr msg;
+    std::memset(&msg, 0, sizeof(msg));
+    msg.msg_name = &remote_addr_;
+    msg.msg_namelen = sizeof(remote_addr_);
+    msg.msg_iov = const_cast<struct iovec*>(iov);
+    msg.msg_iovlen = iovcnt;
+
+    size_t total_expected = 0;
+    for (size_t i = 0; i < iovcnt; ++i) {
+        total_expected += iov[i].iov_len;
+    }
+
     std::lock_guard<std::mutex> lock(send_mutex_);
-    ssize_t sent = sendto(fd, data, length, 0,
-                          (struct sockaddr*)&remote_addr_, sizeof(remote_addr_));
-    return sent == static_cast<ssize_t>(length);
+    ssize_t sent = sendmsg(fd, &msg, 0);
+    return sent == static_cast<ssize_t>(total_expected);
+}
+
+bool UdpTransport::send(const void* data, size_t length) {
+    if (data == nullptr || length == 0) {
+        return false;
+    }
+    struct iovec iov;
+    iov.iov_base = const_cast<void*>(data);
+    iov.iov_len = length;
+    return send_iovec(&iov, 1);
 }
 
 void UdpTransport::close() {

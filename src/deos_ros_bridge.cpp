@@ -157,26 +157,31 @@ void DeosRosBridge::send_deos_frame(uint8_t priority, uint8_t msg_class, uint8_t
         payload_length = DEOS_MAX_PAYLOAD_LEN;
     }
 
-    uint8_t tx_buf[1 + sizeof(deos_header_t) + DEOS_MAX_PAYLOAD_LEN];
-    uint8_t frame_len = sizeof(deos_header_t) + payload_length;
+    deos_wire_prefix_t prefix;
+    prefix.length = sizeof(deos_header_t) + payload_length;
+    prefix.header.priority = priority;
+    prefix.header.message_class = msg_class;
+    prefix.header.service = service;
+    prefix.header.destination = destination;
+    prefix.header.source = DEOS_NODE_MICRO_ROS; // Always 0x04
+    prefix.header.version = DEOS_PROTOCOL_VERSION;
+    prefix.header.command = command;
 
-    tx_buf[0] = frame_len; // Byte 0: Length
+    struct iovec iov[2];
+    iov[0].iov_base = &prefix;
+    iov[0].iov_len = sizeof(prefix);
 
-    deos_header_t* header = reinterpret_cast<deos_header_t*>(&tx_buf[1]);
-    header->priority = priority;
-    header->message_class = msg_class;
-    header->service = service;
-    header->destination = destination;
-    header->source = DEOS_NODE_MICRO_ROS; // Always 0x04
-    header->version = DEOS_PROTOCOL_VERSION;
-    header->sequence = tx_seq_++;
-    header->command = command;
-
+    size_t iovcnt = 1;
     if (payload != nullptr && payload_length > 0) {
-        std::memcpy(&tx_buf[1 + sizeof(deos_header_t)], payload, payload_length);
+        iov[1].iov_base = const_cast<void*>(payload);
+        iov[1].iov_len = payload_length;
+        iovcnt = 2;
     }
 
-    udp_.send(tx_buf, 1 + frame_len);
+    // Thread-safe sequence assignment and zero-copy network transmission
+    std::lock_guard<std::mutex> lock(tx_mutex_);
+    prefix.header.sequence = tx_seq_++;
+    udp_.send_iovec(iov, iovcnt);
 }
 
 // ---------------------------------------------------------------------
@@ -185,7 +190,7 @@ void DeosRosBridge::send_deos_frame(uint8_t priority, uint8_t msg_class, uint8_t
 void DeosRosBridge::send_heartbeat()
 {
     deos_heartbeat_payload_t hb;
-    hb.state = current_bridge_state_;
+    hb.state = current_bridge_state_.load();
 
     // Priority = 5 (NETWORK), Class = 7 (NETWORK), Service = 0 (SYSTEM),
     // Destination = 0x03 (MAIN_STM32), Command = 0x07 (HEARTBEAT)
@@ -199,9 +204,17 @@ void DeosRosBridge::send_heartbeat()
 // ---------------------------------------------------------------------
 void DeosRosBridge::cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-    last_cmd_vel_time_ = this->now();
+    bool motion_allowed = true;
+    {
+        std::lock_guard<std::mutex> lock(safety_mutex_);
+        last_cmd_vel_time_ = this->now();
+        if (enable_safety_timeouts_ && (!is_autonomy_enabled_.load() || !is_motion_enabled_.load())) {
+            motion_allowed = false;
+        }
+        vehicle_stopped_on_timeout_.store(false);
+    }
 
-    if (enable_safety_timeouts_ && (!is_autonomy_enabled_ || !is_motion_enabled_)) {
+    if (!motion_allowed) {
         return; // Motion disabled by safety supervisor
     }
 
@@ -250,20 +263,20 @@ void DeosRosBridge::cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr 
     send_deos_frame(DEOS_PRIO_CRITICAL_CONTROL, DEOS_CLASS_COMMAND, DEOS_SERVICE_STEERING,
                     DEOS_NODE_STEERING, DEOS_CMD_STEERING_SET_TARGET_ANGLE,
                     &steer_pl, sizeof(steer_pl));
-
-    vehicle_stopped_on_timeout_ = false;
 }
 
 void DeosRosBridge::autonomy_enable_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
+    std::lock_guard<std::mutex> lock(safety_mutex_);
     last_autonomy_enable_time_ = this->now();
-    is_autonomy_enabled_ = msg->data;
+    is_autonomy_enabled_.store(msg->data);
 }
 
 void DeosRosBridge::motion_enable_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
+    std::lock_guard<std::mutex> lock(safety_mutex_);
     last_motion_enable_time_ = this->now();
-    is_motion_enabled_ = msg->data;
+    is_motion_enabled_.store(msg->data);
 }
 
 void DeosRosBridge::set_state_callback(const std_msgs::msg::UInt8::SharedPtr msg)
@@ -320,27 +333,35 @@ void DeosRosBridge::check_timeouts()
 {
     if (!enable_safety_timeouts_) return;
 
-    auto now = this->now();
-    double cmd_vel_timeout = this->get_parameter("cmd_vel_timeout_ms").as_int() / 1000.0;
-    double autonomy_timeout = this->get_parameter("autonomy_timeout_ms").as_int() / 1000.0;
-    double motion_timeout = this->get_parameter("motion_timeout_ms").as_int() / 1000.0;
+    bool should_stop = false;
+    {
+        std::lock_guard<std::mutex> lock(safety_mutex_);
+        auto now = this->now();
+        double cmd_vel_timeout = this->get_parameter("cmd_vel_timeout_ms").as_int() / 1000.0;
+        double autonomy_timeout = this->get_parameter("autonomy_timeout_ms").as_int() / 1000.0;
+        double motion_timeout = this->get_parameter("motion_timeout_ms").as_int() / 1000.0;
 
-    bool cmd_vel_expired = (now - last_cmd_vel_time_).seconds() > cmd_vel_timeout;
-    bool autonomy_expired = (now - last_autonomy_enable_time_).seconds() > autonomy_timeout;
-    bool motion_expired = (now - last_motion_enable_time_).seconds() > motion_timeout;
+        bool cmd_vel_expired = (now - last_cmd_vel_time_).seconds() > cmd_vel_timeout;
+        bool autonomy_expired = (now - last_autonomy_enable_time_).seconds() > autonomy_timeout;
+        bool motion_expired = (now - last_motion_enable_time_).seconds() > motion_timeout;
 
-    if (autonomy_expired) is_autonomy_enabled_ = false;
-    if (motion_expired) is_motion_enabled_ = false;
+        if (autonomy_expired) is_autonomy_enabled_.store(false);
+        if (motion_expired) is_motion_enabled_.store(false);
 
-    // If commands timed out or motion was disabled, issue a zero-speed stop to Traction ECU
-    if ((cmd_vel_expired || !is_autonomy_enabled_ || !is_motion_enabled_) && !vehicle_stopped_on_timeout_) {
+        // If commands timed out or motion was disabled, issue a zero-speed stop to Traction ECU
+        if ((cmd_vel_expired || !is_autonomy_enabled_.load() || !is_motion_enabled_.load()) && !vehicle_stopped_on_timeout_.load()) {
+            should_stop = true;
+            vehicle_stopped_on_timeout_.store(true);
+        }
+    }
+
+    if (should_stop) {
         deos_traction_target_payload_t stop_pl;
         stop_pl.target_speed = 0;
         stop_pl.target_accel = 200; // 2.0 m/s^2 deceleration
         send_deos_frame(DEOS_PRIO_CRITICAL_CONTROL, DEOS_CLASS_COMMAND, DEOS_SERVICE_TRACTION,
                         DEOS_NODE_TRACTION, DEOS_CMD_TRACTION_SET_TARGET_SPEED,
                         &stop_pl, sizeof(stop_pl));
-        vehicle_stopped_on_timeout_ = true;
     }
 }
 
@@ -385,9 +406,9 @@ void DeosRosBridge::process_deos_frame(const deos_header_t& header, const uint8_
     if (header.service == DEOS_SERVICE_SYSTEM && header.command == DEOS_CMD_SYSTEM_HEARTBEAT) {
         if (payload_len >= sizeof(deos_heartbeat_payload_t)) {
             const auto* hb = reinterpret_cast<const deos_heartbeat_payload_t*>(payload);
-            std_msgs::msg::UInt8 state_msg;
-            state_msg.data = hb->state;
-            system_state_pub_->publish(state_msg);
+            auto state_msg = std::make_unique<std_msgs::msg::UInt8>();
+            state_msg->data = hb->state;
+            system_state_pub_->publish(std::move(state_msg));
         }
         return;
     }
@@ -397,22 +418,22 @@ void DeosRosBridge::process_deos_frame(const deos_header_t& header, const uint8_
         if (payload_len == sizeof(deos_sensor_imu_payload_t)) {
             const auto* imu_raw = reinterpret_cast<const deos_sensor_imu_payload_t*>(payload);
 
-            sensor_msgs::msg::Imu imu_msg;
-            imu_msg.header.stamp = this->now();
-            imu_msg.header.frame_id = "imu_link";
+            auto imu_msg = std::make_unique<sensor_msgs::msg::Imu>();
+            imu_msg->header.stamp = this->now();
+            imu_msg->header.frame_id = "imu_link";
 
             // Convert 0.01 m/s^2 to m/s^2
-            imu_msg.linear_acceleration.x = imu_raw->accel_x * 0.01;
-            imu_msg.linear_acceleration.y = imu_raw->accel_y * 0.01;
-            imu_msg.linear_acceleration.z = imu_raw->accel_z * 0.01;
+            imu_msg->linear_acceleration.x = imu_raw->accel_x * 0.01;
+            imu_msg->linear_acceleration.y = imu_raw->accel_y * 0.01;
+            imu_msg->linear_acceleration.z = imu_raw->accel_z * 0.01;
 
             // Convert 0.01 deg/s to rad/s
             constexpr double DEG_TO_RAD = M_PI / 180.0;
-            imu_msg.angular_velocity.x = (imu_raw->gyro_x * 0.01) * DEG_TO_RAD;
-            imu_msg.angular_velocity.y = (imu_raw->gyro_y * 0.01) * DEG_TO_RAD;
-            imu_msg.angular_velocity.z = (imu_raw->gyro_z * 0.01) * DEG_TO_RAD;
+            imu_msg->angular_velocity.x = (imu_raw->gyro_x * 0.01) * DEG_TO_RAD;
+            imu_msg->angular_velocity.y = (imu_raw->gyro_y * 0.01) * DEG_TO_RAD;
+            imu_msg->angular_velocity.z = (imu_raw->gyro_z * 0.01) * DEG_TO_RAD;
 
-            imu_pub_->publish(imu_msg);
+            imu_pub_->publish(std::move(imu_msg));
         }
         return;
     }
@@ -426,9 +447,9 @@ void DeosRosBridge::process_deos_frame(const deos_header_t& header, const uint8_
                 speed_ms = -speed_ms;
             }
 
-            std_msgs::msg::Float32 spd_msg;
-            spd_msg.data = speed_ms;
-            speed_pub_->publish(spd_msg);
+            auto spd_msg = std::make_unique<std_msgs::msg::Float32>();
+            spd_msg->data = speed_ms;
+            speed_pub_->publish(std::move(spd_msg));
         }
         return;
     }
@@ -440,9 +461,9 @@ void DeosRosBridge::process_deos_frame(const deos_header_t& header, const uint8_
             float angle_deg = static_cast<float>(steer_st->current_angle) * 0.01f;
             float angle_rad = angle_deg * static_cast<float>(M_PI / 180.0);
 
-            std_msgs::msg::Float32 ang_msg;
-            ang_msg.data = angle_rad;
-            steering_angle_pub_->publish(ang_msg);
+            auto ang_msg = std::make_unique<std_msgs::msg::Float32>();
+            ang_msg->data = angle_rad;
+            steering_angle_pub_->publish(std::move(ang_msg));
         }
         return;
     }
@@ -452,13 +473,13 @@ void DeosRosBridge::process_deos_frame(const deos_header_t& header, const uint8_
         if (payload_len >= sizeof(deos_bms_status_payload_t)) {
             const auto* bms_st = reinterpret_cast<const deos_bms_status_payload_t*>(payload);
             
-            std_msgs::msg::Float32 volt_msg;
-            volt_msg.data = static_cast<float>(bms_st->pack_voltage) * 0.01f;
-            bms_voltage_pub_->publish(volt_msg);
+            auto volt_msg = std::make_unique<std_msgs::msg::Float32>();
+            volt_msg->data = static_cast<float>(bms_st->pack_voltage) * 0.01f;
+            bms_voltage_pub_->publish(std::move(volt_msg));
 
-            std_msgs::msg::Float32 soc_msg;
-            soc_msg.data = static_cast<float>(bms_st->state_of_charge) * 0.01f;
-            bms_soc_pub_->publish(soc_msg);
+            auto soc_msg = std::make_unique<std_msgs::msg::Float32>();
+            soc_msg->data = static_cast<float>(bms_st->state_of_charge) * 0.01f;
+            bms_soc_pub_->publish(std::move(soc_msg));
         }
         return;
     }
@@ -468,14 +489,12 @@ void DeosRosBridge::handle_ping(uint8_t src_node, const uint8_t* payload, uint8_
 {
     if (payload_len < sizeof(deos_ping_payload_t)) return;
 
-    deos_ping_payload_t ping_resp;
-    std::memcpy(&ping_resp, payload, sizeof(ping_resp));
-
-    // Echo identical ping_id back in PONG
+    // Zero-copy: Pass the incoming ping payload directly into send_deos_frame as PONG response
     send_deos_frame(DEOS_PRIO_NETWORK, DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM,
                     src_node, DEOS_CMD_SYSTEM_PONG,
-                    &ping_resp, sizeof(ping_resp));
+                    payload, sizeof(deos_ping_payload_t));
 
+    const auto* ping = reinterpret_cast<const deos_ping_payload_t*>(payload);
     RCLCPP_DEBUG(this->get_logger(), "Replied PONG to Node 0x%02X (Ping ID: %u)",
-                 src_node, ping_resp.ping_id);
+                 src_node, ping->ping_id);
 }

@@ -6,6 +6,7 @@
 #include <mutex>
 #include <atomic>
 #include <netinet/in.h>
+#include <sys/uio.h>
 
 class UdpTransport {
 public:
@@ -25,6 +26,11 @@ public:
      * @brief Send raw buffer over UDP to the remote address
      */
     bool send(const void* data, size_t length);
+
+    /**
+     * @brief Send scatter-gather buffers over UDP to remote address (Zero-Copy)
+     */
+    bool send_iovec(const struct iovec* iov, size_t iovcnt);
 
     /**
      * @brief Check for incoming UDP datagrams (blocks up to timeout_ms)
