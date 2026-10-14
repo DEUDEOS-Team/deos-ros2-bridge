@@ -42,12 +42,16 @@ void DeosRosBridge::init_node()
     this->declare_parameter<int>("autonomy_timeout_ms", 500);
     this->declare_parameter<int>("motion_timeout_ms", 250);
     this->declare_parameter<bool>("enable_safety_timeouts", true);
+    this->declare_parameter<int>("node_id", DEOS_NODE_MICRO_ROS);
+    this->declare_parameter<std::string>("imu_frame_id", "imu_link");
 
     double wheelbase = this->get_parameter("wheelbase").as_double();
     double max_steering_angle = this->get_parameter("max_steering_angle_rad").as_double();
     std::string remote_ip = this->get_parameter("udp_remote_ip").as_string();
     int remote_port = this->get_parameter("udp_remote_port").as_int();
     int heartbeat_ms = this->get_parameter("heartbeat_period_ms").as_int();
+    int node_id = this->get_parameter("node_id").as_int();
+    imu_frame_id_ = this->get_parameter("imu_frame_id").as_string();
 
     // -----------------------------------------------------------------
     // 2. Instantiate OOP Domain Components
@@ -61,8 +65,52 @@ void DeosRosBridge::init_node()
     safety_cfg.enable_timeouts = this->get_parameter("enable_safety_timeouts").as_bool();
     safety_ = std::make_unique<deos::SafetySupervisor>(safety_cfg);
 
-    codec_ = std::make_unique<deos::DeosCodec>(DEOS_NODE_MICRO_ROS);
+    codec_ = std::make_unique<deos::DeosCodec>(static_cast<uint8_t>(node_id));
     dispatcher_ = std::make_unique<deos::DeosMessageDispatcher>();
+
+    // Dynamic Parameter Reconfiguration Callback (Allows updating parameters from file/CLI at runtime)
+    param_callback_handle_ = this->add_on_set_parameters_callback(
+        [this](const std::vector<rclcpp::Parameter>& parameters) {
+            rcl_interfaces::msg::SetParametersResult result;
+            result.successful = true;
+
+            for (const auto& param : parameters) {
+                const auto& name = param.get_name();
+                if (name == "wheelbase") {
+                    double val = param.as_double();
+                    if (val > 0.1) {
+                        kinematics_->set_wheelbase(val);
+                        RCLCPP_INFO(this->get_logger(), "Dynamic parameter updated: wheelbase = %.2f m", val);
+                    } else {
+                        result.successful = false;
+                        result.reason = "wheelbase must be > 0.1 m";
+                    }
+                } else if (name == "max_steering_angle_rad") {
+                    double val = param.as_double();
+                    if (val > 0.05 && val < M_PI_2) {
+                        kinematics_->set_max_steering_angle_rad(val);
+                        RCLCPP_INFO(this->get_logger(), "Dynamic parameter updated: max_steering_angle_rad = %.2f rad", val);
+                    } else {
+                        result.successful = false;
+                        result.reason = "max_steering_angle_rad must be between 0.05 and 1.57 rad";
+                    }
+                } else if (name == "cmd_vel_timeout_ms" || name == "autonomy_timeout_ms" || 
+                           name == "motion_timeout_ms" || name == "enable_safety_timeouts") 
+                {
+                    auto cfg = safety_->config();
+                    if (name == "cmd_vel_timeout_ms") cfg.cmd_vel_timeout = std::chrono::milliseconds(param.as_int());
+                    if (name == "autonomy_timeout_ms") cfg.autonomy_timeout = std::chrono::milliseconds(param.as_int());
+                    if (name == "motion_timeout_ms") cfg.motion_timeout = std::chrono::milliseconds(param.as_int());
+                    if (name == "enable_safety_timeouts") cfg.enable_timeouts = param.as_bool();
+                    safety_->set_config(cfg);
+                    RCLCPP_INFO(this->get_logger(), "Dynamic parameter updated: safety config for '%s'", name.c_str());
+                } else if (name == "imu_frame_id") {
+                    imu_frame_id_ = param.as_string();
+                    RCLCPP_INFO(this->get_logger(), "Dynamic parameter updated: imu_frame_id = '%s'", imu_frame_id_.c_str());
+                }
+            }
+            return result;
+        });
 
     // -----------------------------------------------------------------
     // 3. Configure Transport (DIP - Dependency Inversion Principle)
@@ -197,7 +245,7 @@ void DeosRosBridge::init_handlers()
                 const auto* imu_raw = reinterpret_cast<const deos_sensor_imu_payload_t*>(payload);
                 auto imu_msg = std::make_unique<sensor_msgs::msg::Imu>();
                 imu_msg->header.stamp = this->now();
-                imu_msg->header.frame_id = "imu_link";
+                imu_msg->header.frame_id = imu_frame_id_;
 
                 imu_msg->linear_acceleration.x = imu_raw->accel_x * 0.01;
                 imu_msg->linear_acceleration.y = imu_raw->accel_y * 0.01;

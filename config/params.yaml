@@ -1,11 +1,45 @@
-deos_ros_bridge:
-  ros__parameters:
-    wheelbase: 2.0
-    max_steering_angle_rad: 0.60
-    udp_remote_ip: "192.168.1.10"
-    udp_remote_port: 5001
-    heartbeat_period_ms: 1000
-    cmd_vel_timeout_ms: 200
-    autonomy_timeout_ms: 500
-    motion_timeout_ms: 250
-    enable_safety_timeouts: true
+# ==============================================================================
+# DEOS ROS 2 Bridge - Ana Parametre Yapılandırma Dosyası
+# ==============================================================================
+# Tüm araç, ağ, güvenlik ve protokol parametreleri bu tek dosya üzerinden yönetilir.
+# Parametreler çalışma zamanında da (dynamic reconfigure) güncellenebilir.
+#
+# Başlatma:
+#   ros2 launch deos_ros_bridge bridge.launch.py
+# veya:
+#   ros2 run deos_ros_bridge deos_ros_bridge_node --ros-args --params-file config/params.yaml
+# ==============================================================================
+
+/**:
+  deos_ros_bridge:
+    ros__parameters:
+      # ------------------------------------------------------------------------
+      # 1. Araç Kinematiği (Ackermann Geometrisi)
+      # ------------------------------------------------------------------------
+      wheelbase: 2.0                   # Ön ve arka dingil arası mesafe (metre)
+      max_steering_angle_rad: 0.60     # Maksimum direksiyon tekerlek açısı (radyan, ~34.4°)
+
+      # ------------------------------------------------------------------------
+      # 2. Ağ ve Hedef STM32 VCU İletişimi
+      # ------------------------------------------------------------------------
+      udp_remote_ip: "192.168.1.10"    # Hedef Main STM32 / VCU Ethernet IP adresi
+      udp_remote_port: 5001            # Hedef Main STM32 DEOS UDP portu
+
+      # ------------------------------------------------------------------------
+      # 3. Güvenlik Bekçisi ve Zaman Aşımları (Watchdog Failsafe)
+      # ------------------------------------------------------------------------
+      enable_safety_timeouts: true     # Güvenlik bekçisi ve duruş failsafe mekanizmasını etkinleştir
+      cmd_vel_timeout_ms: 200          # /cmd_vel mesajı kesilirse acil duruşa geçme süresi (ms)
+      autonomy_timeout_ms: 500         # /vehicle/autonomy_enable sinyali tazelenme süresi (ms)
+      motion_timeout_ms: 250           # /vehicle/motion_enable sinyali tazelenme süresi (ms)
+
+      # ------------------------------------------------------------------------
+      # 4. DEOS Protokolü ve Handshake
+      # ------------------------------------------------------------------------
+      node_id: 4                       # DEOS Sanal Düğüm Kimliği (0x04: DEOS_NODE_MICRO_ROS)
+      heartbeat_period_ms: 1000        # STM32'ye gönderilen Heartbeat handshake periyodu (ms)
+
+      # ------------------------------------------------------------------------
+      # 5. Koordinat Çerçeveleri (TF Frames)
+      # ------------------------------------------------------------------------
+      imu_frame_id: "imu_link"         # /sensors/imu/data mesajı header frame_id

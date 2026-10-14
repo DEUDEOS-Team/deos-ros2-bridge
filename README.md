@@ -121,10 +121,23 @@ colcon build --packages-select deos_ros_bridge
 source install/setup.bash
 ```
 
-### Parametreler ile Başlatma
-Varsayılan parametre dosyasıyla çalıştırmak için:
+### Parametreler ile Başlatma (Tek Dosyadan Yönetim)
+Tüm parametreler `config/params.yaml` dosyası üzerinden yönetilir. 
+
+**Önerilen Yöntem (Launch Dosyası ile):**
 ```bash
-ros2 run deos_ros_bridge deos_ros_bridge_node --ros-args --params-file src/deos-ros2-bridge/config/params.yaml
+ros2 launch deos_ros_bridge bridge.launch.py
+```
+Farklı bir parametre dosyası belirtmek için:
+```bash
+ros2 launch deos_ros_bridge bridge.launch.py params_file:=/path/to/custom_params.yaml
+```
+
+**Dinamik Parametre Güncelleme (Çalışma Zamanında):**
+Düğümü yeniden başlatmadan parametreleri güncelleyebilirsiniz:
+```bash
+ros2 param set /deos_ros_bridge wheelbase 2.2
+ros2 param set /deos_ros_bridge cmd_vel_timeout_ms 300
 ```
 
 ---
