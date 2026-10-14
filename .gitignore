@@ -1,0 +1,10 @@
+# Build directories
+build/
+install/
+log/
+
+# Compiled binaries and object files
+*.o
+*.so
+*.a
+test/benchmark_stress_test
