@@ -10,14 +10,14 @@ namespace deos {
 
 /**
  * @brief DEOS Protocol Frame Codec (SRP - Single Responsibility Principle)
- * Handles wire serialization, sequence numbers, zero-copy transmission, and frame validation.
+ * Handles wire serialization, sequence numbers, UDP encapsulation, and frame validation.
  */
 class DeosCodec {
 public:
     explicit DeosCodec(uint8_t source_node_id = DEOS_NODE_MICRO_ROS);
 
     /**
-     * @brief Encode and send a frame via ITransport using Zero-Copy scatter-gather
+     * @brief Encode and send a frame via ITransport using the Universal Header
      */
     bool send_frame(ITransport& transport,
                     uint8_t priority, uint8_t msg_class, uint8_t service,

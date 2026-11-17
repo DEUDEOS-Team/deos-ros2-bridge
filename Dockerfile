@@ -2,6 +2,7 @@ FROM ros:jazzy-ros-base AS build
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 WORKDIR /ws
 COPY package.xml CMakeLists.txt src/deos_ros_bridge/
+COPY vendor/deos_protocol/ src/deos_ros_bridge/vendor/deos_protocol/
 COPY include/ src/deos_ros_bridge/include/
 COPY src/ src/deos_ros_bridge/src/
 COPY launch/ src/deos_ros_bridge/launch/

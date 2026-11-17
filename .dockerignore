@@ -11,3 +11,10 @@
 !launch/**
 !src/
 !src/**
+!vendor/
+!vendor/deos_protocol/
+!vendor/deos_protocol/CMakeLists.txt
+!vendor/deos_protocol/include/
+!vendor/deos_protocol/include/**
+!vendor/deos_protocol/src/
+!vendor/deos_protocol/src/**

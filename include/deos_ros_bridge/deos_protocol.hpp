@@ -149,10 +149,7 @@ struct deos_udp_frame_t {
 /**
  * @brief Wire UDP Frame prefix (Length + Common Header) for zero-copy scatter-gather transmission
  */
-struct deos_wire_prefix_t {
-    uint8_t length;
-    deos_header_t header;
-};
+
 
 // Heartbeat payload (1 byte)
 struct deos_heartbeat_payload_t {

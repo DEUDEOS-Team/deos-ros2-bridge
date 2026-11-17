@@ -11,6 +11,7 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 # find_package(deos_msgs REQUIRED)
+add_subdirectory(vendor/deos_protocol)
 
 include_directories(include)
 
@@ -21,12 +22,15 @@ add_executable(deos_ros_bridge_node
   src/kinematics.cpp
   src/safety_supervisor.cpp
   src/deos_codec.cpp
+  src/universal_frame.cpp
   src/message_dispatcher.cpp
 )
 
 target_include_directories(deos_ros_bridge_node PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>)
+
+target_link_libraries(deos_ros_bridge_node deos_protocol)
 
 ament_target_dependencies(deos_ros_bridge_node
   rclcpp
