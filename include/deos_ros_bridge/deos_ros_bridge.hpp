@@ -68,7 +68,6 @@ private:
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lights_headlight_sub_;
 
     // Timers
-    rclcpp::TimerBase::SharedPtr heartbeat_timer_;
     rclcpp::TimerBase::SharedPtr timeout_timer_;
 
     // Core Domain Objects (OOP Components)
@@ -90,7 +89,6 @@ private:
     // Helper Methods
     void init_node();
     void init_handlers();
-    void send_heartbeat();
     void check_timeouts();
     void handle_incoming_data(const uint8_t* data, size_t length);
     void set_light_state(uint8_t light_id, bool enable);

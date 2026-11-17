@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 
@@ -17,6 +18,13 @@ struct DatagramHeader {
     uint8_t command;
     uint8_t sequence;
 };
+
+struct ImuSubscription {
+    DatagramHeader header;
+    std::array<uint8_t, 6> payload;
+};
+
+ImuSubscription imu_subscription(uint16_t interval_ms);
 
 std::size_t encode_datagram(uint8_t* data, std::size_t capacity,
                             const DatagramHeader& header,

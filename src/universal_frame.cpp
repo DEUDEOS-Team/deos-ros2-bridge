@@ -1,11 +1,24 @@
 #include "universal_frame.hpp"
 
 #include <deos/deos_frame.h>
+#include <deos/deos_codec.h>
 #include <cstring>
 
 namespace deos {
 
 static_assert(kUniversalHeaderSize == DEOS_UNIVERSAL_HEADER_SIZE, "Unexpected DEOS header size");
+
+ImuSubscription imu_subscription(uint16_t interval_ms)
+{
+    ImuSubscription request{
+        {DEOS_NODE_IMU, DEOS_NODE_ROS_BRIDGE, DEOS_PRIO_CONFIG, DEOS_PROTOCOL_VERSION,
+         DEOS_CLASS_REQUEST, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_SUBSCRIBE, 0},
+        {DEOS_SERVICE_SENSORS, DEOS_CMD_SENSOR_IMU_DATA}};
+    static_assert(sizeof(deos_subscribe_req_payload) == 6, "Unexpected SUBSCRIBE payload size");
+    deos_put_u16_le(request.payload.data() + 2, interval_ms);
+    deos_put_u16_le(request.payload.data() + 4, 0); // Infinite ICD lease.
+    return request;
+}
 
 std::size_t encode_datagram(uint8_t* data, std::size_t capacity,
                             const DatagramHeader& header,

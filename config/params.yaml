@@ -37,7 +37,7 @@
       # 4. DEOS Protokolü ve Handshake
       # ------------------------------------------------------------------------
       node_id: 4                       # DEOS Sanal Düğüm Kimliği (0x04: DEOS_NODE_MICRO_ROS)
-      heartbeat_period_ms: 1000        # STM32'ye gönderilen Heartbeat handshake periyodu (ms)
+      imu_interval_ms: 100             # IMU aboneliğinde istenen yayın aralığı (ms)
 
       # ------------------------------------------------------------------------
       # 5. Koordinat Çerçeveleri (TF Frames)

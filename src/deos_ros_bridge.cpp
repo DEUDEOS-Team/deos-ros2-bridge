@@ -1,5 +1,9 @@
 #include "deos_ros_bridge/deos_ros_bridge.hpp"
 
+#include "universal_frame.hpp"
+
+#include <stdexcept>
+
 using namespace std::chrono_literals;
 
 DeosRosBridge::DeosRosBridge()
@@ -37,7 +41,7 @@ void DeosRosBridge::init_node()
     this->declare_parameter<double>("max_steering_angle_rad", 0.60);
     this->declare_parameter<std::string>("udp_remote_ip", "192.168.1.10");
     this->declare_parameter<int>("udp_remote_port", 5001);
-    this->declare_parameter<int>("heartbeat_period_ms", 1000);
+    this->declare_parameter<int>("imu_interval_ms", 100);
     this->declare_parameter<int>("cmd_vel_timeout_ms", 200);
     this->declare_parameter<int>("autonomy_timeout_ms", 500);
     this->declare_parameter<int>("motion_timeout_ms", 250);
@@ -49,7 +53,10 @@ void DeosRosBridge::init_node()
     double max_steering_angle = this->get_parameter("max_steering_angle_rad").as_double();
     std::string remote_ip = this->get_parameter("udp_remote_ip").as_string();
     int remote_port = this->get_parameter("udp_remote_port").as_int();
-    int heartbeat_ms = this->get_parameter("heartbeat_period_ms").as_int();
+    const auto imu_interval = this->get_parameter("imu_interval_ms").as_int();
+    if (imu_interval < 10 || imu_interval >= 65535) {
+        throw std::invalid_argument("imu_interval_ms must be between 10 and 65534");
+    }
     int node_id = this->get_parameter("node_id").as_int();
     imu_frame_id_ = this->get_parameter("imu_frame_id").as_string();
 
@@ -193,6 +200,14 @@ void DeosRosBridge::init_node()
         this->handle_incoming_data(data, length);
     });
 
+    const auto subscription = deos::imu_subscription(static_cast<uint16_t>(imu_interval));
+    if (!codec_->send_frame(*transport_, subscription.header.priority,
+                            subscription.header.message_class, subscription.header.service,
+                            subscription.header.destination, subscription.header.command,
+                            subscription.payload.data(), subscription.payload.size())) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to send IMU subscription request");
+    }
+
     // Start background receiver worker thread
     rx_thread_ = std::thread([this]() {
         while (running_.load() && rclcpp::ok()) {
@@ -203,10 +218,6 @@ void DeosRosBridge::init_node()
     // -----------------------------------------------------------------
     // 8. Timers
     // -----------------------------------------------------------------
-    heartbeat_timer_ = this->create_wall_timer(
-        std::chrono::milliseconds(heartbeat_ms),
-        std::bind(&DeosRosBridge::send_heartbeat, this));
-
     timeout_timer_ = this->create_wall_timer(
         50ms, std::bind(&DeosRosBridge::check_timeouts, this));
 
@@ -219,11 +230,27 @@ void DeosRosBridge::init_handlers()
     // 1. PING Request Handler
     dispatcher_->register_handler(DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_PING,
         [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
-            if (len >= sizeof(deos_ping_payload_t)) {
-                // Echo PONG response back with zero copy
+            if (header.message_class == DEOS_CLASS_NETWORK &&
+                header.destination == codec_->source_node_id() &&
+                len == sizeof(deos_ping_payload_t)) {
                 codec_->send_frame(*transport_, DEOS_PRIO_NETWORK, DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM,
                                    header.source, DEOS_CMD_SYSTEM_PONG,
                                    payload, sizeof(deos_ping_payload_t));
+            }
+        });
+
+    dispatcher_->register_handler(DEOS_SERVICE_SYSTEM, deos::imu_subscription(100).header.command,
+        [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
+            if (header.message_class != DEOS_CLASS_RESPONSE ||
+                header.source != DEOS_NODE_IMU || header.destination != codec_->source_node_id() ||
+                len == 0) {
+                return;
+            }
+            if (payload[0] != 0) {
+                RCLCPP_ERROR(this->get_logger(), "STM32 rejected IMU subscription (result %u)",
+                             static_cast<unsigned>(payload[0]));
+            } else {
+                RCLCPP_INFO(this->get_logger(), "STM32 accepted IMU subscription");
             }
         });
 
@@ -240,12 +267,15 @@ void DeosRosBridge::init_handlers()
 
     // 3. IMU Telemetry Handler
     dispatcher_->register_handler(DEOS_SERVICE_SENSORS, DEOS_CMD_SENSOR_IMU_DATA,
-        [this](const deos_header_t&, const uint8_t* payload, uint8_t len) {
-            if (len == sizeof(deos_sensor_imu_payload_t)) {
+        [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
+            if (header.message_class == DEOS_CLASS_STATUS &&
+                header.source == DEOS_NODE_IMU && header.destination == codec_->source_node_id() &&
+                len == sizeof(deos_sensor_imu_payload_t)) {
                 const auto* imu_raw = reinterpret_cast<const deos_sensor_imu_payload_t*>(payload);
                 auto imu_msg = std::make_unique<sensor_msgs::msg::Imu>();
                 imu_msg->header.stamp = this->now();
                 imu_msg->header.frame_id = imu_frame_id_;
+                imu_msg->orientation_covariance[0] = -1.0;
 
                 imu_msg->linear_acceleration.x = imu_raw->accel_x * 0.01;
                 imu_msg->linear_acceleration.y = imu_raw->accel_y * 0.01;
@@ -403,16 +433,6 @@ void DeosRosBridge::lights_brake_callback(const std_msgs::msg::Bool::SharedPtr m
 void DeosRosBridge::lights_headlight_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
     set_light_state(DEOS_LIGHT_HEADLIGHT, msg->data);
-}
-
-void DeosRosBridge::send_heartbeat()
-{
-    deos_heartbeat_payload_t hb;
-    hb.state = current_bridge_state_.load();
-
-    codec_->send_frame(*transport_, DEOS_PRIO_NETWORK, DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM,
-                       DEOS_NODE_MAIN_STM32, DEOS_CMD_SYSTEM_HEARTBEAT,
-                       &hb, sizeof(hb));
 }
 
 void DeosRosBridge::check_timeouts()

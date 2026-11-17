@@ -9,18 +9,18 @@ SafetySupervisor::SafetySupervisor(const SafetyConfig& config)
       last_motion_enable_time_(Clock::now()),
       is_autonomy_enabled_(false),
       is_motion_enabled_(false),
-      vehicle_stopped_on_timeout_(false)
+      vehicle_stopped_on_timeout_(true)
 {
 }
 
 bool SafetySupervisor::notify_cmd_vel() {
     std::lock_guard<std::mutex> lock(mutex_);
     last_cmd_vel_time_ = Clock::now();
-    vehicle_stopped_on_timeout_.store(false);
 
     if (config_.enable_timeouts && (!is_autonomy_enabled_.load() || !is_motion_enabled_.load())) {
         return false;
     }
+    vehicle_stopped_on_timeout_.store(false);
     return true;
 }
 
