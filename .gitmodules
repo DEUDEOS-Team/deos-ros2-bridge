@@ -1,0 +1,3 @@
+[submodule "deos_protocol"]
+	path = vendor/deos_protocol
+	url = https://github.com/DEUDEOS-Team/deos-protocol.git
