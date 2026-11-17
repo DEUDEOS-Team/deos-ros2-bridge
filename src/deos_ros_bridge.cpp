@@ -73,7 +73,7 @@ void DeosRosBridge::init_node()
     safety_ = std::make_unique<deos::SafetySupervisor>(safety_cfg);
 
     codec_ = std::make_unique<deos::DeosCodec>(static_cast<uint8_t>(node_id));
-    dispatcher_ = std::make_unique<deos::DeosMessageDispatcher>();
+    dispatcher_ = std::make_unique<deos::DeosMessageDispatcher>(static_cast<uint8_t>(node_id));
 
     // Dynamic Parameter Reconfiguration Callback (Allows updating parameters from file/CLI at runtime)
     param_callback_handle_ = this->add_on_set_parameters_callback(
@@ -228,7 +228,7 @@ void DeosRosBridge::init_node()
 void DeosRosBridge::init_handlers()
 {
     // 1. PING Request Handler
-    dispatcher_->register_handler(DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_PING,
+    dispatcher_->register_handler(DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_PING,
         [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
             if (header.message_class == DEOS_CLASS_NETWORK &&
                 header.destination == codec_->source_node_id() &&
@@ -239,7 +239,7 @@ void DeosRosBridge::init_handlers()
             }
         });
 
-    dispatcher_->register_handler(DEOS_SERVICE_SYSTEM, deos::imu_subscription(100).header.command,
+    dispatcher_->register_handler(DEOS_CLASS_RESPONSE, DEOS_SERVICE_SYSTEM, deos::imu_subscription(100).header.command,
         [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
             if (header.message_class != DEOS_CLASS_RESPONSE ||
                 header.source != DEOS_NODE_IMU || header.destination != codec_->source_node_id() ||
@@ -255,7 +255,7 @@ void DeosRosBridge::init_handlers()
         });
 
     // 2. Heartbeat Telemetry Handler
-    dispatcher_->register_handler(DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_HEARTBEAT,
+    dispatcher_->register_handler(DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_HEARTBEAT,
         [this](const deos_header_t&, const uint8_t* payload, uint8_t len) {
             if (len >= sizeof(deos_heartbeat_payload_t)) {
                 const auto* hb = reinterpret_cast<const deos_heartbeat_payload_t*>(payload);
@@ -266,7 +266,7 @@ void DeosRosBridge::init_handlers()
         });
 
     // 3. IMU Telemetry Handler
-    dispatcher_->register_handler(DEOS_SERVICE_SENSORS, DEOS_CMD_SENSOR_IMU_DATA,
+    dispatcher_->register_handler(DEOS_CLASS_STATUS, DEOS_SERVICE_SENSORS, DEOS_CMD_SENSOR_IMU_DATA,
         [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
             if (header.message_class == DEOS_CLASS_STATUS &&
                 header.source == DEOS_NODE_IMU && header.destination == codec_->source_node_id() &&
@@ -291,7 +291,7 @@ void DeosRosBridge::init_handlers()
         });
 
     // 4. Traction Telemetry Handler
-    dispatcher_->register_handler(DEOS_SERVICE_TRACTION, DEOS_CMD_TRACTION_GET_STATUS,
+    dispatcher_->register_handler(DEOS_CLASS_STATUS, DEOS_SERVICE_TRACTION, DEOS_CMD_TRACTION_GET_STATUS,
         [this](const deos_header_t&, const uint8_t* payload, uint8_t len) {
             if (len == sizeof(deos_traction_status_t)) {
                 const auto* trac_st = reinterpret_cast<const deos_traction_status_t*>(payload);
@@ -306,7 +306,7 @@ void DeosRosBridge::init_handlers()
         });
 
     // 5. Steering Telemetry Handler
-    dispatcher_->register_handler(DEOS_SERVICE_STEERING, DEOS_CMD_STEERING_GET_STATUS,
+    dispatcher_->register_handler(DEOS_CLASS_STATUS, DEOS_SERVICE_STEERING, DEOS_CMD_STEERING_GET_STATUS,
         [this](const deos_header_t&, const uint8_t* payload, uint8_t len) {
             if (len == sizeof(deos_steering_status_t)) {
                 const auto* steer_st = reinterpret_cast<const deos_steering_status_t*>(payload);
@@ -320,7 +320,7 @@ void DeosRosBridge::init_handlers()
         });
 
     // 6. BMS Telemetry Handler
-    dispatcher_->register_handler(DEOS_SERVICE_BMS, DEOS_CMD_BMS_STATUS,
+    dispatcher_->register_handler(DEOS_CLASS_STATUS, DEOS_SERVICE_BMS, DEOS_CMD_BMS_STATUS,
         [this](const deos_header_t&, const uint8_t* payload, uint8_t len) {
             if (len >= sizeof(deos_bms_status_payload_t)) {
                 const auto* bms_st = reinterpret_cast<const deos_bms_status_payload_t*>(payload);

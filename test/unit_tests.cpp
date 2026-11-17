@@ -115,9 +115,9 @@ void test_codec_and_mock_transport() {
     assert(mock.sent_packets.size() == 1);
     const auto& pkt = mock.sent_packets[0];
 
-    // Total length: 1 + 8 + 1 = 10 bytes
-    assert(pkt.size() == 10);
-    assert(pkt[0] == 9); // length byte: 8 + 1 = 9
+    // Total length: 1 + 9 + 1 = 11 bytes
+    assert(pkt.size() == 11);
+    assert(pkt[0] == 10 && pkt[1] == DEOS_NODE_TRACTION && pkt[9] == 1);
 
     // Decode frame
     deos_header_t hdr;
@@ -136,21 +136,27 @@ void test_codec_and_mock_transport() {
 
 void test_dispatcher() {
     std::cout << "[TEST] Running DeosMessageDispatcher tests... ";
-    deos::DeosMessageDispatcher dispatcher;
+    deos::DeosMessageDispatcher dispatcher(DEOS_NODE_MICRO_ROS);
 
     bool ping_called = false;
-    dispatcher.register_handler(DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_PING,
+    dispatcher.register_handler(DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_PING,
         [&ping_called](const deos_header_t&, const uint8_t*, uint8_t) {
             ping_called = true;
         });
 
     deos_header_t hdr{};
+    hdr.destination = DEOS_NODE_MICRO_ROS;
+    hdr.message_class = DEOS_CLASS_NETWORK;
     hdr.service = DEOS_SERVICE_SYSTEM;
     hdr.command = DEOS_CMD_SYSTEM_PING;
 
     bool handled = dispatcher.dispatch(hdr, nullptr, 0);
     assert(handled);
     assert(ping_called);
+
+    hdr.message_class = DEOS_CLASS_COMMAND;
+    assert(!dispatcher.dispatch(hdr, nullptr, 0));
+    hdr.message_class = DEOS_CLASS_NETWORK;
 
     // Unhandled command
     hdr.command = 0xFE;
