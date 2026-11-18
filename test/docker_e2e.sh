@@ -10,33 +10,40 @@ elif [ "$#" -ne 0 ]; then
     echo "Usage: bash test/docker_e2e.sh [--reject-imu]" >&2
     exit 2
 fi
-network=$(docker network create --internal "deos-e2e-$$")
+config=$(mktemp -d)
+network=
 mock=
 bridge=
+stm32=
 cleanup() {
     if [ -n "$bridge" ]; then docker logs "$bridge"; docker stop -t 2 "$bridge" >/dev/null; fi
     if [ -n "$mock" ]; then docker logs "$mock"; docker stop -t 2 "$mock" >/dev/null; fi
-    docker network rm "$network" >/dev/null
+    if [ -n "$stm32" ]; then docker logs "$stm32"; docker stop -t 2 "$stm32" >/dev/null; fi
+    if [ -n "$network" ]; then docker network rm "$network" >/dev/null; fi
+    if [ -f "$config/params.yaml" ]; then unlink "$config/params.yaml"; fi
+    rmdir "$config"
 }
 trap cleanup EXIT
+network=$(docker network create --internal "deos-e2e-$$")
+mock_args=()
+if [ "$reject_imu" = 1 ]; then mock_args+=(--reject-imu); fi
+stm32=$(docker run -d --rm --init --network "$network" \
+  -v "$repo:/fixture:ro" --entrypoint python3 "$mock_image" \
+  /fixture/test/mock_stm32.py --bind 0.0.0.0 "${mock_args[@]}")
+for attempt in $(seq 1 100); do
+    if docker logs "$stm32" 2>&1 | grep -q "UDP test peer ready"; then break; fi
+    sleep .1
+done
+docker logs "$stm32" 2>&1 | grep -q "UDP test peer ready"
+stm32_ip=$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$stm32")
+test -n "$stm32_ip"
+sed -E "s/(udp_remote_ip: )[^ ]+/\1\"$stm32_ip\"/" "$repo/config/params.yaml" > "$config/params.yaml"
 mock=$(docker run -d --rm --init --network "$network" -e ROS_DOMAIN_ID=42 \
   -e FASTDDS_BUILTIN_TRANSPORTS=UDPv4 "$mock_image" --enable-commands)
 bridge=$(docker run -d --rm --init --network "$network" -e ROS_DOMAIN_ID=42 \
   -e FASTDDS_BUILTIN_TRANSPORTS=UDPv4 \
-  -e REJECT_IMU="$reject_imu" -v "$repo:/fixture:ro" "$bridge_image" bash -c '
-    mock_args=()
-    if [ "$REJECT_IMU" = 1 ]; then mock_args+=(--reject-imu); fi
-    python3 /fixture/test/mock_stm32.py "${mock_args[@]}" >/tmp/stm32.log 2>&1 &
-    stm32=$!
-    for attempt in $(seq 1 100); do
-        if grep -q "UDP test peer ready" /tmp/stm32.log; then break; fi
-        if ! kill -0 "$stm32" 2>/dev/null; then cat /tmp/stm32.log; exit 1; fi
-        sleep .1
-    done
-    grep -q "UDP test peer ready" /tmp/stm32.log || { cat /tmp/stm32.log; exit 1; }
-    tail -n +1 --follow=name --sleep-interval=.1 /tmp/stm32.log &
-    exec ros2 run deos_ros_bridge deos_ros_bridge_node --ros-args -p udp_remote_ip:=127.0.0.1
-')
+  --mount "type=bind,src=$config/params.yaml,dst=/config/params.yaml,readonly" \
+  "$bridge_image" ros2 launch deos_ros_bridge bridge.launch.py params_file:=/config/params.yaml)
 docker exec -i "$mock" python3 - "$reject_imu" <<'PY'
 import json
 import sys
@@ -90,19 +97,20 @@ assert ack["message"]["result_code"] == 0 and ack["message"]["headlight"] == 1
 print("HTTP: IMU behavior, light response, and matching PONG verified")
 PY
 for attempt in $(seq 1 12); do
-    if docker logs "$bridge" 2>&1 | grep -q 'Cmd:TURN_ON'; then break; fi
+    if docker logs "$stm32" 2>&1 | grep -q 'Cmd:TURN_ON'; then break; fi
     sleep .25
 done
-logs=$(docker logs "$bridge" 2>&1)
+logs=$(docker logs "$stm32" 2>&1)
+bridge_logs=$(docker logs "$bridge" 2>&1)
 test "$(grep -c 'Cmd:SUBSCRIBE' <<<"$logs")" = 1
 grep -Eq 'Cmd:PONG .*Payload:12345678' <<<"$logs"
 test "$(grep -c 'Cmd:PING' <<<"$logs")" = 1
 grep -Eq 'Cmd:PING .*Payload:40302010' <<<"$logs"
 grep -Eq 'Cmd:TURN_ON .*Payload:01' <<<"$logs"
 if [ "$reject_imu" = 1 ]; then
-    grep -q 'STM32 rejected IMU subscription (result 1)' <<<"$logs"
+    grep -q 'STM32 rejected IMU subscription (result 1)' <<<"$bridge_logs"
 else
-    grep -q 'STM32 accepted IMU subscription' <<<"$logs"
+    grep -q 'STM32 accepted IMU subscription' <<<"$bridge_logs"
 fi
 if grep -q 'Cmd:HEARTBEAT' <<<"$logs"; then exit 1; fi
 echo "UDP: SUBSCRIBE, PONG, and browser-driven TURN_ON verified"

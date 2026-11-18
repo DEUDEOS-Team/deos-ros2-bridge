@@ -161,7 +161,7 @@ bash test/docker_e2e.sh --reject-imu
 ```
 
 Kullanılan varsayılan imajlar `deos-ros-bridge:universal-amd64` ve
-`deos-ros-mock:jazzy`. Test kapalı bir Docker ağı kullanır.
+`deos-ros-mock:jazzy`. Test, kapalı bir Docker ağında üç ayrı konteyner başlatır. Bridge standart launch ile çalışır ve UDP üzerinden STM32 simülatörüne bağlanır. ROS 2 Mock, bridge ile ROS topic’leri üzerinden haberleşir.
 
 ### B. Uçtan Uca Hız ve Gecikme Benchmark'ı
 ```bash

@@ -98,11 +98,12 @@ class MockStm32:
 
 def main():
     parser = argparse.ArgumentParser()
+    parser.add_argument("--bind", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=5001)
     parser.add_argument("--reject-imu", action="store_true")
     args = parser.parse_args()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-        sock.bind(("127.0.0.1", args.port))
+        sock.bind((args.bind, args.port))
         print("UDP test peer ready", flush=True)
         MockStm32(sock, args.reject_imu).run()
 
