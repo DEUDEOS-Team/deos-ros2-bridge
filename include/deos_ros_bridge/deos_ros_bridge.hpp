@@ -5,6 +5,7 @@
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/u_int8.hpp>
+#include <std_msgs/msg/u_int32.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
 #include "deos_ros_bridge/deos_protocol.hpp"
@@ -18,6 +19,8 @@
 #include <thread>
 #include <atomic>
 #include <memory>
+#include <mutex>
+#include <optional>
 
 class DeosRosBridge : public rclcpp::Node
 {
@@ -67,6 +70,12 @@ private:
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lights_brake_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lights_headlight_sub_;
 
+    rclcpp::Publisher<std_msgs::msg::UInt32>::SharedPtr pong_pub_;
+    rclcpp::Subscription<std_msgs::msg::UInt32>::SharedPtr ping_sub_;
+    std::mutex ping_mutex_;
+    std::optional<uint32_t> pending_ping_;
+    std::chrono::steady_clock::time_point ping_deadline_;
+
     // Timers
     rclcpp::TimerBase::SharedPtr timeout_timer_;
 
@@ -89,6 +98,7 @@ private:
     void init_node();
     void init_handlers();
     void check_timeouts();
+    void send_ping(uint32_t id);
     void handle_incoming_data(const uint8_t* data, size_t length);
     void set_light_state(uint8_t light_id, bool enable);
 };

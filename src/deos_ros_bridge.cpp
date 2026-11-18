@@ -194,6 +194,10 @@ void DeosRosBridge::init_node()
     bms_voltage_pub_ = this->create_publisher<std_msgs::msg::Float32>("/vehicle/bms/voltage", telemetry_qos);
     bms_soc_pub_ = this->create_publisher<std_msgs::msg::Float32>("/vehicle/bms/soc", telemetry_qos);
 
+    pong_pub_ = this->create_publisher<std_msgs::msg::UInt32>("/deos/network/pong", reliable_qos);
+    ping_sub_ = this->create_subscription<std_msgs::msg::UInt32>("/deos/network/ping", reliable_qos,
+        [this](const std_msgs::msg::UInt32& message) { send_ping(message.data); });
+
     // -----------------------------------------------------------------
     // 7. Register Message Handlers (Dispatcher Pattern)
     // -----------------------------------------------------------------
@@ -240,6 +244,25 @@ void DeosRosBridge::init_handlers()
                                    header.source, DEOS_CMD_SYSTEM_PONG,
                                    payload, sizeof(uint32_t));
             }
+        });
+
+    dispatcher_->register_handler(DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_PONG,
+        [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
+            if (header.destination != codec_->source_node_id() ||
+                header.source != DEOS_NODE_MAIN_STM32 || len != sizeof(uint32_t)) {
+                return;
+            }
+            const auto id = deos_get_u32_le(payload);
+            {
+                std::lock_guard<std::mutex> lock(ping_mutex_);
+                if (pending_ping_ != id || std::chrono::steady_clock::now() > ping_deadline_) {
+                    return;
+                }
+                pending_ping_.reset();
+            }
+            std_msgs::msg::UInt32 pong;
+            pong.data = id;
+            pong_pub_->publish(pong);
         });
 
     dispatcher_->register_handler(DEOS_CLASS_RESPONSE, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_SUBSCRIBE,
@@ -435,6 +458,20 @@ void DeosRosBridge::lights_brake_callback(const std_msgs::msg::Bool::SharedPtr m
 void DeosRosBridge::lights_headlight_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
     set_light_state(DEOS_LIGHT_HEADLIGHT, msg->data);
+}
+
+void DeosRosBridge::send_ping(uint32_t id)
+{
+    uint8_t payload[sizeof(id)];
+    deos_put_u32_le(payload, id);
+    std::lock_guard<std::mutex> lock(ping_mutex_);
+    if (codec_->send_frame(*transport_, DEOS_PRIO_NETWORK, DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM,
+                           DEOS_NODE_MAIN_STM32, DEOS_CMD_SYSTEM_PING, payload, sizeof(payload))) {
+        pending_ping_ = id;
+        ping_deadline_ = std::chrono::steady_clock::now() + 5s;
+    } else {
+        RCLCPP_WARN(this->get_logger(), "Failed to send PING to Main STM32");
+    }
 }
 
 void DeosRosBridge::check_timeouts()

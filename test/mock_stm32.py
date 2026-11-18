@@ -40,6 +40,13 @@ class MockStm32:
             return
         print(f"RX {message}", flush=True)
         key = (message.destination, message.message_class, message.service, message.command)
+        if key == (deos.NODE_MAIN_STM32, deos.CLASS_NETWORK, deos.SERVICE_SYSTEM,
+                   deos.CMD_SYSTEM_PING) and len(message.payload) == 4:
+            self.client = peer
+            self.send(source=deos.NODE_MAIN_STM32, message_class=deos.CLASS_NETWORK,
+                      priority=deos.PRIO_NETWORK, service=deos.SERVICE_SYSTEM,
+                      command=deos.CMD_SYSTEM_PONG, payload=message.payload)
+            return
         if key != (deos.NODE_IMU, deos.CLASS_REQUEST, deos.SERVICE_SYSTEM, deos.CMD_SYSTEM_SUBSCRIBE):
             return
         if len(message.payload) != 6 or message.payload[:2] != IMU_KEY:
