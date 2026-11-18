@@ -45,11 +45,14 @@ import urllib.request
 base = "http://127.0.0.1:8765"
 topic = "/vehicle/lights/headlight"
 imu_topic = "/sensors/imu/data"
+ping_topic = "/deos/network/ping"
+pong_topic = "/deos/network/pong"
 reject = sys.argv[1] == "1"
 for attempt in range(120):
     try:
         status = json.load(urllib.request.urlopen(base + "/api/status", timeout=1))
-        if status["commands"].get(topic) and (reject or imu_topic in status["latest"]):
+        if (status["commands"].get(topic) and status["commands"].get(ping_topic)
+                and status["telemetry"].get(pong_topic) and (reject or imu_topic in status["latest"])):
             break
     except OSError:
         pass
@@ -68,6 +71,17 @@ request = urllib.request.Request(base + "/api/command", json.dumps({"topic": top
                                  {"Origin": base, "Content-Type": "application/json"})
 event = json.load(urllib.request.urlopen(request))
 assert event["direction"] == "tx" and event["message"]["data"] is True
+ping_id = 0x10203040
+request = urllib.request.Request(base + "/api/command", json.dumps({"topic": ping_topic, "value": ping_id}).encode(),
+                                 {"Origin": base, "Content-Type": "application/json"})
+assert json.load(urllib.request.urlopen(request))["message"]["data"] == ping_id
+for attempt in range(24):
+    status = json.load(urllib.request.urlopen(base + "/api/status", timeout=1))
+    if status["latest"].get(pong_topic, {}).get("message", {}).get("data") == ping_id:
+        break
+    time.sleep(.25)
+else:
+    raise SystemExit("No matching PONG received")
 print("HTTP: expected IMU behavior and light command TX verified")
 PY
 for attempt in $(seq 1 12); do
@@ -77,6 +91,8 @@ done
 logs=$(docker logs "$bridge" 2>&1)
 test "$(grep -c 'Cmd:SUBSCRIBE' <<<"$logs")" = 1
 grep -Eq 'Cmd:PONG .*Payload:12345678' <<<"$logs"
+test "$(grep -c 'Cmd:PING' <<<"$logs")" = 1
+grep -Eq 'Cmd:PING .*Payload:40302010' <<<"$logs"
 grep -Eq 'Cmd:TURN_ON .*Payload:01' <<<"$logs"
 if [ "$reject_imu" = 1 ]; then
     grep -q 'STM32 rejected IMU subscription (result 1)' <<<"$logs"
