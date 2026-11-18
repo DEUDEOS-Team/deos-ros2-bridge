@@ -88,3 +88,12 @@ Firmware `5cb57e7` üzerindeki IMU handler eksikliği nedeniyle gerçek karttan
 `STM32 rejected IMU subscription (result 1)` mesajı beklenir. Bridge çalışmaya
 devam eder. IMU verisi için kart tarafında ilgili abonelik handler'ı ve
 yayın akışı gerekir. Ayrıntılar [protokol incelemesinde](PROTOCOL_REVIEW.md).
+
+ROS 2 tarafında Main STM32 bağlantısını elle sınamak için tek bir PING
+gönderilebilir. İlk komutu bir terminalde, ikinciyi başka bir terminalde
+çalıştır. PONG, aynı 32 bit kimliği döndürür.
+
+```bash
+sudo docker exec -it deos-ros-bridge bash /deos_entrypoint.sh ros2 topic echo /deos/network/pong
+sudo docker exec deos-ros-bridge bash /deos_entrypoint.sh ros2 topic pub --once /deos/network/ping std_msgs/msg/UInt32 '{data: 42}'
+```
