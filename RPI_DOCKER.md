@@ -17,20 +17,21 @@ sudo docker run --rm hello-world
 
 ## 2. İmajı yükle
 
-Hazır `deos-ros-bridge-rpi-arm64.tar.gz` arşivini ve bu repodaki
+Hazır `deos-ros-bridge-universal-arm64.tar.gz` arşivini ve bu repodaki
 `config/params.yaml` dosyasını Raspberry Pi'ye kopyala. Arşivin bulunduğu
 dizinden yükle:
 
 ```bash
-sudo docker load -i deos-ros-bridge-rpi-arm64.tar.gz
-sudo docker image inspect deos-ros-bridge:rpi-arm64 --format '{{.Os}}/{{.Architecture}}'
+sudo docker load -i deos-ros-bridge-universal-arm64.tar.gz
+sudo docker image inspect deos-ros-bridge:universal-arm64 --format '{{.Os}}/{{.Architecture}}'
 ```
 
 Çıktı `linux/arm64` olmalı. Alternatif olarak güncel kaynak dosyalarının
 tamamını Pi'ye kopyalayıp repo kökünden imajı doğrudan derleyebilirsin:
 
 ```bash
-sudo docker buildx build --platform linux/arm64 --load -t deos-ros-bridge:rpi-arm64 .
+git submodule update --init vendor/deos_protocol
+sudo docker buildx build --platform linux/arm64 --load -t deos-ros-bridge:universal-arm64 .
 ```
 
 ## 3. STM32 ve ROS 2 ayarlarını yap
@@ -49,7 +50,7 @@ sudo docker run -d --name deos-ros-bridge \
   --network host \
   -e ROS_DOMAIN_ID=0 \
   --mount "type=bind,source=$PWD/params.yaml,target=/config/params.yaml,readonly" \
-  deos-ros-bridge:rpi-arm64 \
+  deos-ros-bridge:universal-arm64 \
   ros2 launch deos_ros_bridge bridge.launch.py params_file:=/config/params.yaml
 ```
 
@@ -76,3 +77,14 @@ sudo docker rm deos-ros-bridge
 ```
 
 Ardından 3. adımdaki çalıştırma komutunu aynı YAML yoluyla tekrar uygula.
+
+## 5. IMU aboneliğini doğrula
+
+Bridge başlangıçta IMU'ya bir SUBSCRIBE isteği gönderir. `imu_interval_ms`
+varsayılan olarak 100 ms'dir. Kira süresi sıfırdır ve bridge aboneliği
+periyodik olarak yenilemez. ROS 2 IMU topic'i best-effort QoS kullanır.
+
+Firmware `5cb57e7` üzerindeki IMU handler eksikliği nedeniyle gerçek karttan
+`STM32 rejected IMU subscription (result 1)` mesajı beklenir. Bridge çalışmaya
+devam eder. IMU verisi için kart tarafında ilgili abonelik handler'ı ve
+yayın akışı gerekir. Ayrıntılar [protokol incelemesinde](PROTOCOL_REVIEW.md).

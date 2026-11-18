@@ -12,6 +12,12 @@ ROS 2 ekibi, Jazzy ve geliştirme araçları kurulu bilgisayarda bu repoyu aşa�
 
 `package.xml` ve `CMakeLists.txt` bu dizinin doğrudan içinde olmalı.
 
+Repo kökünde firmware ile sabitlenmiş protokol bağımlılığını alın:
+
+```bash
+git submodule update --init vendor/deos_protocol
+```
+
 ## 2. Araç ve ağ ayarlarını yapın
 
 `config/params.yaml` dosyasında şu değerleri gerçek araca göre düzenleyin:
@@ -62,4 +68,4 @@ Karşı ekibin yazılımı `/cmd_vel`, `/vehicle/autonomy_enable` ve `/vehicle/m
 
 Her seferinde ayrı terminal açmamak için `bridge.launch.py` aracın ana launch dosyasına dahil edilir. Cihaz açılışında otomatik başlatma istenirse ayrıca bir `systemd` servisi tanımlanır. Sadece derlemek node'u başlatmaz.
 
-Mevcut doğrulama: bağımsız birim testleri ve UDP benchmark geçti; Jazzy üzerinde derleme, topic testleri ve gerçek STM32 entegrasyonu henüz doğrulanmadı.
+Mevcut doğrulama: bağımsız birim testleri ve UDP benchmark geçti; Jazzy Docker derlemesi ve sahte STM32 ile ROS/UDP testleri geçti. Gerçek STM32 IMU aboneliği için [firmware bulgularına](PROTOCOL_REVIEW.md) bakın.

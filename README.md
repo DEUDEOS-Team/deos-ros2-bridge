@@ -22,7 +22,7 @@ Köprü, DEOS ağı üzerinde **`0x04` (`DEOS_NODE_MICRO_ROS`)** sanal düğüm 
 │  - Ackermann Kinematik Dönüşümü                        │
 │  - Birim Dönüşümü (SI Float <-> Fixed-Point Integer)   │
 │  - 200 ms Komut Bekçisi (Watchdog Safety)              │
-│  - 1 Hz Heartbeat ve İstemci Tanıma (Handshake)        │
+│  - Universal Header ve açılışta tek IMU aboneliği     │
 └───────────────────────────┬────────────────────────────┘
                             │ Raw UDP (Port 5001)
                             ▼
@@ -149,12 +149,28 @@ Fiziksel STM32 kartı bağlı olmadan köprüyü test etmek için Python mock si
 ```bash
 python3 test/mock_stm32.py
 ```
-Bu betik UDP port `5001`'i dinler, Pi'den gelen Heartbeat ve `/cmd_vel` paketlerini ekrana basar ve Pi'ye 10 Hz simüle edilmiş IMU verisi basar.
+Betiğin varsayılan adresi `127.0.0.1:5001`. Geçerli IMU aboneliği alındığında
+istenen aralıkta simülasyon verisi gönderir. `--reject-imu`, incelenen
+firmware'in `UNSUPPORTED` yanıtını simüle eder.
+
+Bridge ve tarayıcı mock imajları derlendikten sonra iki senaryoyu test et:
+
+```bash
+bash test/docker_e2e.sh
+bash test/docker_e2e.sh --reject-imu
+```
+
+Kullanılan varsayılan imajlar `deos-ros-bridge:universal-amd64` ve
+`deos-ros-mock:jazzy`. Test kapalı bir Docker ağı kullanır.
 
 ### B. Uçtan Uca Hız ve Gecikme Benchmark'ı
 ```bash
-g++ -O3 -std=c++17 -Iinclude test/benchmark_stress_test.cpp -lpthread -o test/benchmark_stress_test
-./test/benchmark_stress_test
+cmake -S vendor/deos_protocol -B /tmp/deos-protocol-build
+cmake --build /tmp/deos-protocol-build
+g++ -O3 -std=c++17 -pthread -Iinclude -Ivendor/deos_protocol/include \
+  test/benchmark_stress_test.cpp /tmp/deos-protocol-build/libdeos_protocol.a \
+  -o /tmp/deos-benchmark
+/tmp/deos-benchmark
 ```
 * **Tipik Gecikme (Round-Trip):** $\approx 14\ \mu\text{s}$ ($0.014\text{ ms}$)
 * **Throughput:** $69,000+$ paket/saniye
