@@ -80,7 +80,6 @@ private:
     // Background Thread
     std::thread rx_thread_;
     std::atomic<bool> running_{true};
-    std::atomic<uint8_t> current_bridge_state_{DEOS_STATE_STANDBY};
     std::string imu_frame_id_{"imu_link"};
 
     // Dynamic Parameter Reconfiguration Handle

@@ -14,7 +14,7 @@ namespace deos {
  */
 class DeosCodec {
 public:
-    explicit DeosCodec(uint8_t source_node_id = DEOS_NODE_MICRO_ROS);
+    explicit DeosCodec(uint8_t source_node_id = DEOS_NODE_ROS_BRIDGE);
 
     /**
      * @brief Encode and send a frame via ITransport using the Universal Header

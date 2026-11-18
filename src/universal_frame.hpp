@@ -1,5 +1,7 @@
 #pragma once
 
+#include "deos_ros_bridge/deos_protocol.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -8,18 +10,9 @@
 
 namespace deos {
 
-constexpr std::size_t kUniversalHeaderSize = 9;
+constexpr std::size_t kUniversalHeaderSize = DEOS_UNIVERSAL_HEADER_SIZE;
 
-struct DatagramHeader {
-    uint8_t destination;
-    uint8_t source;
-    uint8_t priority;
-    uint8_t version;
-    uint8_t message_class;
-    uint8_t service;
-    uint8_t command;
-    uint8_t sequence;
-};
+using DatagramHeader = ::deos_header_t;
 
 class DatagramRegistry {
 public:

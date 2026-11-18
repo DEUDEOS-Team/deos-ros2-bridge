@@ -2,6 +2,7 @@
 
 #include "universal_frame.hpp"
 
+#include <deos/deos_codec.h>
 #include <stdexcept>
 
 using namespace std::chrono_literals;
@@ -23,11 +24,11 @@ DeosRosBridge::DeosRosBridge(std::shared_ptr<deos::ITransport> transport)
 DeosRosBridge::~DeosRosBridge()
 {
     running_.store(false);
-    if (transport_) {
-        transport_->close();
-    }
     if (rx_thread_.joinable()) {
         rx_thread_.join();
+    }
+    if (transport_) {
+        transport_->close();
     }
     RCLCPP_INFO(this->get_logger(), "DEOS ROS 2 Bridge Node shut down cleanly.");
 }
@@ -46,18 +47,24 @@ void DeosRosBridge::init_node()
     this->declare_parameter<int>("autonomy_timeout_ms", 500);
     this->declare_parameter<int>("motion_timeout_ms", 250);
     this->declare_parameter<bool>("enable_safety_timeouts", true);
-    this->declare_parameter<int>("node_id", DEOS_NODE_MICRO_ROS);
+    this->declare_parameter<int>("node_id", DEOS_NODE_ROS_BRIDGE);
     this->declare_parameter<std::string>("imu_frame_id", "imu_link");
 
     double wheelbase = this->get_parameter("wheelbase").as_double();
     double max_steering_angle = this->get_parameter("max_steering_angle_rad").as_double();
     std::string remote_ip = this->get_parameter("udp_remote_ip").as_string();
-    int remote_port = this->get_parameter("udp_remote_port").as_int();
+    const auto remote_port = this->get_parameter("udp_remote_port").as_int();
+    if (remote_port < 1 || remote_port > 65535) {
+        throw std::invalid_argument("udp_remote_port must be between 1 and 65535");
+    }
     const auto imu_interval = this->get_parameter("imu_interval_ms").as_int();
     if (imu_interval < 10 || imu_interval >= 65535) {
         throw std::invalid_argument("imu_interval_ms must be between 10 and 65534");
     }
-    int node_id = this->get_parameter("node_id").as_int();
+    const auto node_id = this->get_parameter("node_id").as_int();
+    if (node_id != DEOS_NODE_ROS_BRIDGE) {
+        throw std::invalid_argument("node_id must match the firmware ROS bridge route (4)");
+    }
     imu_frame_id_ = this->get_parameter("imu_frame_id").as_string();
 
     // -----------------------------------------------------------------
@@ -125,11 +132,7 @@ void DeosRosBridge::init_node()
     if (!transport_) {
         auto udp = std::make_shared<UdpTransport>();
         if (!udp->init(remote_ip, static_cast<uint16_t>(remote_port))) {
-            RCLCPP_ERROR(this->get_logger(), "Failed to initialize UDP transport to %s:%d",
-                         remote_ip.c_str(), remote_port);
-        } else {
-            RCLCPP_INFO(this->get_logger(), "UDP Transport ready, target STM32: %s:%d",
-                        remote_ip.c_str(), remote_port);
+            throw std::runtime_error("Failed to initialize STM32 UDP transport");
         }
         transport_ = udp;
     }
@@ -232,14 +235,14 @@ void DeosRosBridge::init_handlers()
         [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
             if (header.message_class == DEOS_CLASS_NETWORK &&
                 header.destination == codec_->source_node_id() &&
-                len == sizeof(deos_ping_payload_t)) {
+                len == sizeof(uint32_t)) {
                 codec_->send_frame(*transport_, DEOS_PRIO_NETWORK, DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM,
                                    header.source, DEOS_CMD_SYSTEM_PONG,
-                                   payload, sizeof(deos_ping_payload_t));
+                                   payload, sizeof(uint32_t));
             }
         });
 
-    dispatcher_->register_handler(DEOS_CLASS_RESPONSE, DEOS_SERVICE_SYSTEM, deos::imu_subscription(100).header.command,
+    dispatcher_->register_handler(DEOS_CLASS_RESPONSE, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_SUBSCRIBE,
         [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
             if (header.message_class != DEOS_CLASS_RESPONSE ||
                 header.source != DEOS_NODE_IMU || header.destination != codec_->source_node_id() ||
@@ -257,10 +260,10 @@ void DeosRosBridge::init_handlers()
     // 2. Heartbeat Telemetry Handler
     dispatcher_->register_handler(DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_HEARTBEAT,
         [this](const deos_header_t&, const uint8_t* payload, uint8_t len) {
-            if (len >= sizeof(deos_heartbeat_payload_t)) {
-                const auto* hb = reinterpret_cast<const deos_heartbeat_payload_t*>(payload);
+            if (len >= sizeof(deos_heartbeat_payload)) {
+                const auto* hb = reinterpret_cast<const deos_heartbeat_payload*>(payload);
                 auto state_msg = std::make_unique<std_msgs::msg::UInt8>();
-                state_msg->data = hb->state;
+                state_msg->data = hb->current_state;
                 system_state_pub_->publish(std::move(state_msg));
             }
         });
@@ -270,21 +273,20 @@ void DeosRosBridge::init_handlers()
         [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
             if (header.message_class == DEOS_CLASS_STATUS &&
                 header.source == DEOS_NODE_IMU && header.destination == codec_->source_node_id() &&
-                len == sizeof(deos_sensor_imu_payload_t)) {
-                const auto* imu_raw = reinterpret_cast<const deos_sensor_imu_payload_t*>(payload);
+                len == sizeof(deos_sensor_imu_payload)) {
                 auto imu_msg = std::make_unique<sensor_msgs::msg::Imu>();
                 imu_msg->header.stamp = this->now();
                 imu_msg->header.frame_id = imu_frame_id_;
                 imu_msg->orientation_covariance[0] = -1.0;
 
-                imu_msg->linear_acceleration.x = imu_raw->accel_x * 0.01;
-                imu_msg->linear_acceleration.y = imu_raw->accel_y * 0.01;
-                imu_msg->linear_acceleration.z = imu_raw->accel_z * 0.01;
+                imu_msg->linear_acceleration.x = deos_get_i16_le(payload + offsetof(deos_sensor_imu_payload, accel_x)) * 0.01;
+                imu_msg->linear_acceleration.y = deos_get_i16_le(payload + offsetof(deos_sensor_imu_payload, accel_y)) * 0.01;
+                imu_msg->linear_acceleration.z = deos_get_i16_le(payload + offsetof(deos_sensor_imu_payload, accel_z)) * 0.01;
 
                 constexpr double DEG_TO_RAD = M_PI / 180.0;
-                imu_msg->angular_velocity.x = (imu_raw->gyro_x * 0.01) * DEG_TO_RAD;
-                imu_msg->angular_velocity.y = (imu_raw->gyro_y * 0.01) * DEG_TO_RAD;
-                imu_msg->angular_velocity.z = (imu_raw->gyro_z * 0.01) * DEG_TO_RAD;
+                imu_msg->angular_velocity.x = (deos_get_i16_le(payload + offsetof(deos_sensor_imu_payload, gyro_x)) * 0.01) * DEG_TO_RAD;
+                imu_msg->angular_velocity.y = (deos_get_i16_le(payload + offsetof(deos_sensor_imu_payload, gyro_y)) * 0.01) * DEG_TO_RAD;
+                imu_msg->angular_velocity.z = (deos_get_i16_le(payload + offsetof(deos_sensor_imu_payload, gyro_z)) * 0.01) * DEG_TO_RAD;
 
                 imu_pub_->publish(std::move(imu_msg));
             }
@@ -293,8 +295,8 @@ void DeosRosBridge::init_handlers()
     // 4. Traction Telemetry Handler
     dispatcher_->register_handler(DEOS_CLASS_STATUS, DEOS_SERVICE_TRACTION, DEOS_CMD_TRACTION_GET_STATUS,
         [this](const deos_header_t&, const uint8_t* payload, uint8_t len) {
-            if (len == sizeof(deos_traction_status_t)) {
-                const auto* trac_st = reinterpret_cast<const deos_traction_status_t*>(payload);
+            if (len == sizeof(deos_traction_status_payload)) {
+                const auto* trac_st = reinterpret_cast<const deos_traction_status_payload*>(payload);
                 float speed_ms = static_cast<float>(trac_st->current_speed) * 0.01f;
                 if (trac_st->current_gear == DEOS_GEAR_REVERSE) {
                     speed_ms = -speed_ms;
@@ -308,8 +310,8 @@ void DeosRosBridge::init_handlers()
     // 5. Steering Telemetry Handler
     dispatcher_->register_handler(DEOS_CLASS_STATUS, DEOS_SERVICE_STEERING, DEOS_CMD_STEERING_GET_STATUS,
         [this](const deos_header_t&, const uint8_t* payload, uint8_t len) {
-            if (len == sizeof(deos_steering_status_t)) {
-                const auto* steer_st = reinterpret_cast<const deos_steering_status_t*>(payload);
+            if (len == sizeof(deos_steering_status_payload)) {
+                const auto* steer_st = reinterpret_cast<const deos_steering_status_payload*>(payload);
                 float angle_deg = static_cast<float>(steer_st->current_angle) * 0.01f;
                 float angle_rad = angle_deg * static_cast<float>(M_PI / 180.0);
 
@@ -322,8 +324,8 @@ void DeosRosBridge::init_handlers()
     // 6. BMS Telemetry Handler
     dispatcher_->register_handler(DEOS_CLASS_STATUS, DEOS_SERVICE_BMS, DEOS_CMD_BMS_STATUS,
         [this](const deos_header_t&, const uint8_t* payload, uint8_t len) {
-            if (len >= sizeof(deos_bms_status_payload_t)) {
-                const auto* bms_st = reinterpret_cast<const deos_bms_status_payload_t*>(payload);
+            if (len >= sizeof(deos_bms_status_payload)) {
+                const auto* bms_st = reinterpret_cast<const deos_bms_status_payload*>(payload);
                 auto volt_msg = std::make_unique<std_msgs::msg::Float32>();
                 volt_msg->data = static_cast<float>(bms_st->pack_voltage) * 0.01f;
                 bms_voltage_pub_->publish(std::move(volt_msg));
@@ -355,14 +357,14 @@ void DeosRosBridge::cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr 
     auto cmd = kinematics_->calculate(msg->linear.x, msg->angular.z);
 
     // 1. Send Gear Command
-    deos_traction_gear_payload_t gear_pl;
+    deos_traction_gear_payload gear_pl;
     gear_pl.gear = cmd.gear;
     codec_->send_frame(*transport_, DEOS_PRIO_CRITICAL_CONTROL, DEOS_CLASS_COMMAND, DEOS_SERVICE_TRACTION,
                        DEOS_NODE_TRACTION, DEOS_CMD_TRACTION_SET_GEAR,
                        &gear_pl, sizeof(gear_pl));
 
     // 2. Send Traction Target Speed (0.01 m/s)
-    deos_traction_target_payload_t trac_pl;
+    deos_traction_target_payload trac_pl;
     trac_pl.target_speed = static_cast<uint16_t>(cmd.speed_mps * 100.0);
     trac_pl.target_accel = 100; // 1.00 m/s^2
     codec_->send_frame(*transport_, DEOS_PRIO_CRITICAL_CONTROL, DEOS_CLASS_COMMAND, DEOS_SERVICE_TRACTION,
@@ -370,7 +372,7 @@ void DeosRosBridge::cmd_vel_callback(const geometry_msgs::msg::Twist::SharedPtr 
                        &trac_pl, sizeof(trac_pl));
 
     // 3. Send Steering Target Angle (0.01 deg)
-    deos_steering_target_payload_t steer_pl;
+    deos_steering_target_payload steer_pl;
     steer_pl.target_angle = static_cast<int16_t>(cmd.steering_angle_deg * 100.0);
     steer_pl.target_angular_velocity = 3000; // 30.00 deg/s
     codec_->send_frame(*transport_, DEOS_PRIO_CRITICAL_CONTROL, DEOS_CLASS_COMMAND, DEOS_SERVICE_STEERING,
@@ -390,8 +392,7 @@ void DeosRosBridge::motion_enable_callback(const std_msgs::msg::Bool::SharedPtr 
 
 void DeosRosBridge::set_state_callback(const std_msgs::msg::UInt8::SharedPtr msg)
 {
-    deos_set_state_payload_t pl;
-    pl.req_state = msg->data;
+    const uint8_t pl = msg->data;
 
     codec_->send_frame(*transport_, DEOS_PRIO_CONTROL, DEOS_CLASS_COMMAND, DEOS_SERVICE_SYSTEM,
                        DEOS_NODE_MAIN_STM32, DEOS_CMD_SYSTEM_SET_STATE,
@@ -422,7 +423,8 @@ void DeosRosBridge::signals_left_callback(const std_msgs::msg::Bool::SharedPtr m
 
 void DeosRosBridge::signals_hazard_callback(const std_msgs::msg::Bool::SharedPtr msg)
 {
-    set_light_state(DEOS_LIGHT_HAZARD, msg->data);
+    set_light_state(DEOS_LIGHT_TURN_LEFT, msg->data);
+    set_light_state(DEOS_LIGHT_TURN_RIGHT, msg->data);
 }
 
 void DeosRosBridge::lights_brake_callback(const std_msgs::msg::Bool::SharedPtr msg)
@@ -438,7 +440,7 @@ void DeosRosBridge::lights_headlight_callback(const std_msgs::msg::Bool::SharedP
 void DeosRosBridge::check_timeouts()
 {
     if (safety_->evaluate_timeouts()) {
-        deos_traction_target_payload_t stop_pl;
+        deos_traction_target_payload stop_pl;
         stop_pl.target_speed = 0;
         stop_pl.target_accel = 200; // 2.0 m/s^2 deceleration
         codec_->send_frame(*transport_, DEOS_PRIO_CRITICAL_CONTROL, DEOS_CLASS_COMMAND, DEOS_SERVICE_TRACTION,

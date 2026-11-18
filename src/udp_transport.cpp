@@ -63,6 +63,12 @@ bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port)
         return false;
     }
 
+    if (::connect(fd, reinterpret_cast<const sockaddr*>(&remote_addr_), sizeof(remote_addr_)) < 0) {
+        std::cerr << "[UdpTransport] UDP connect failed: " << std::strerror(errno) << std::endl;
+        ::close(fd);
+        return false;
+    }
+
     remote_ip_ = remote_ip;
     remote_port_ = remote_port;
     socket_fd_.store(fd);
@@ -78,8 +84,6 @@ bool UdpTransport::send_iovec(const struct iovec* iov, size_t iovcnt) {
 
     struct msghdr msg;
     std::memset(&msg, 0, sizeof(msg));
-    msg.msg_name = &remote_addr_;
-    msg.msg_namelen = sizeof(remote_addr_);
     msg.msg_iov = const_cast<struct iovec*>(iov);
     msg.msg_iovlen = iovcnt;
 
@@ -121,11 +125,7 @@ void UdpTransport::poll(int timeout_ms) {
     int ret = ::poll(&pfd, 1, timeout_ms);
     if (ret > 0 && (pfd.revents & POLLIN)) {
         uint8_t buffer[2048];
-        struct sockaddr_in from_addr;
-        socklen_t from_len = sizeof(from_addr);
-        
-        ssize_t received = recvfrom(fd, buffer, sizeof(buffer), 0,
-                                    (struct sockaddr*)&from_addr, &from_len);
+        const ssize_t received = recv(fd, buffer, sizeof(buffer), MSG_DONTWAIT);
         if (received > 0 && rx_callback_) {
             rx_callback_(buffer, static_cast<size_t>(received));
         }

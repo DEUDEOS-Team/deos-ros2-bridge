@@ -36,14 +36,7 @@ bool DeosCodec::decode_frame(const uint8_t* data, size_t length,
     if (!decode_datagram(data, length, header, out_payload_len)) {
         return false;
     }
-    out_header.destination = header.destination;
-    out_header.source = header.source;
-    out_header.priority = header.priority;
-    out_header.version = header.version;
-    out_header.message_class = header.message_class;
-    out_header.service = header.service;
-    out_header.command = header.command;
-    out_header.sequence = header.sequence;
+    out_header = header;
     out_payload = data + 1 + kUniversalHeaderSize;
     return true;
 }

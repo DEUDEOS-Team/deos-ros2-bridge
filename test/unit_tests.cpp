@@ -104,9 +104,9 @@ void test_safety_supervisor() {
 void test_codec_and_mock_transport() {
     std::cout << "[TEST] Running DeosCodec & MockTransport tests... ";
     MockTransport mock;
-    deos::DeosCodec codec(DEOS_NODE_MICRO_ROS);
+    deos::DeosCodec codec(DEOS_NODE_ROS_BRIDGE);
 
-    deos_traction_gear_payload_t pl{DEOS_GEAR_DRIVE};
+    deos_traction_gear_payload pl{DEOS_GEAR_DRIVE};
     bool ok = codec.send_frame(mock, DEOS_PRIO_CRITICAL_CONTROL, DEOS_CLASS_COMMAND,
                                DEOS_SERVICE_TRACTION, DEOS_NODE_TRACTION,
                                DEOS_CMD_TRACTION_SET_GEAR, &pl, sizeof(pl));
@@ -127,7 +127,7 @@ void test_codec_and_mock_transport() {
     assert(valid);
     assert(hdr.service == DEOS_SERVICE_TRACTION);
     assert(hdr.command == DEOS_CMD_TRACTION_SET_GEAR);
-    assert(hdr.source == DEOS_NODE_MICRO_ROS);
+    assert(hdr.source == DEOS_NODE_ROS_BRIDGE);
     assert(payload_len == 1);
     assert(payload_ptr[0] == DEOS_GEAR_DRIVE);
 
@@ -136,7 +136,7 @@ void test_codec_and_mock_transport() {
 
 void test_dispatcher() {
     std::cout << "[TEST] Running DeosMessageDispatcher tests... ";
-    deos::DeosMessageDispatcher dispatcher(DEOS_NODE_MICRO_ROS);
+    deos::DeosMessageDispatcher dispatcher(DEOS_NODE_ROS_BRIDGE);
 
     bool ping_called = false;
     dispatcher.register_handler(DEOS_CLASS_NETWORK, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_PING,
@@ -145,7 +145,7 @@ void test_dispatcher() {
         });
 
     deos_header_t hdr{};
-    hdr.destination = DEOS_NODE_MICRO_ROS;
+    hdr.destination = DEOS_NODE_ROS_BRIDGE;
     hdr.message_class = DEOS_CLASS_NETWORK;
     hdr.service = DEOS_SERVICE_SYSTEM;
     hdr.command = DEOS_CMD_SYSTEM_PING;

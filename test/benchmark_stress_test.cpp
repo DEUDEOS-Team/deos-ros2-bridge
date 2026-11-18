@@ -13,6 +13,7 @@
 #include <fcntl.h>
 
 #include "deos_ros_bridge/deos_protocol.hpp"
+#include <deos/deos_codec.h>
 
 using Clock = std::chrono::high_resolution_clock;
 
@@ -45,14 +46,14 @@ void run_mock_stm32() {
                              (struct sockaddr*)&client_addr, &client_len);
         if (n <= 0) continue;
 
-        if (n >= 9) {
-            deos_header_t* hdr = reinterpret_cast<deos_header_t*>(&buffer[1]);
-            if (hdr->command == DEOS_CMD_SYSTEM_PING) {
+        if (n == 1 + DEOS_UNIVERSAL_HEADER_SIZE + 4) {
+            auto* hdr = buffer + 1;
+            if (hdr[DEOS_UF_CMD_OFFSET] == DEOS_CMD_SYSTEM_PING) {
                 // Transform to PONG & swap src/dst
-                hdr->command = DEOS_CMD_SYSTEM_PONG;
-                uint8_t tmp = hdr->source;
-                hdr->source = hdr->destination;
-                hdr->destination = tmp;
+                hdr[DEOS_UF_CMD_OFFSET] = DEOS_CMD_SYSTEM_PONG;
+                uint8_t tmp = hdr[DEOS_UF_SRC_OFFSET];
+                hdr[DEOS_UF_SRC_OFFSET] = hdr[DEOS_UF_DEST_OFFSET];
+                hdr[DEOS_UF_DEST_OFFSET] = tmp;
 
                 // Send back immediately
                 sendto(fd, buffer, n, 0, (struct sockaddr*)&client_addr, client_len);
@@ -93,22 +94,23 @@ int main() {
     latencies_us.reserve(TOTAL_PACKETS);
 
     uint8_t rx_buf[256];
-    uint8_t tx_buf[1 + sizeof(deos_header_t) + 4];
+    uint8_t tx_buf[1 + DEOS_UNIVERSAL_HEADER_SIZE + 4];
 
     // Warmup
     for (int i = 0; i < WARMUP_PACKETS; i++) {
         uint32_t ping_id = i;
-        tx_buf[0] = sizeof(deos_header_t) + 4;
-        deos_header_t* hdr = reinterpret_cast<deos_header_t*>(&tx_buf[1]);
-        hdr->priority = DEOS_PRIO_NETWORK;
-        hdr->message_class = DEOS_CLASS_NETWORK;
-        hdr->service = DEOS_SERVICE_SYSTEM;
-        hdr->destination = DEOS_NODE_MAIN_STM32;
-        hdr->source = DEOS_NODE_MICRO_ROS;
-        hdr->version = DEOS_PROTOCOL_VERSION;
-        hdr->sequence = i & 0xFF;
-        hdr->command = DEOS_CMD_SYSTEM_PING;
-        std::memcpy(&tx_buf[9], &ping_id, 4);
+        tx_buf[0] = DEOS_UNIVERSAL_HEADER_SIZE + 4;
+        auto* hdr = tx_buf + 1;
+        hdr[DEOS_UF_LEN_OFFSET] = 4;
+        hdr[DEOS_UF_PRIO_OFFSET] = DEOS_PRIO_NETWORK;
+        hdr[DEOS_UF_CLASS_OFFSET] = DEOS_CLASS_NETWORK;
+        hdr[DEOS_UF_SERVICE_OFFSET] = DEOS_SERVICE_SYSTEM;
+        hdr[DEOS_UF_DEST_OFFSET] = DEOS_NODE_MAIN_STM32;
+        hdr[DEOS_UF_SRC_OFFSET] = DEOS_NODE_ROS_BRIDGE;
+        hdr[DEOS_UF_VER_OFFSET] = DEOS_PROTOCOL_VERSION;
+        hdr[DEOS_UF_SEQ_OFFSET] = i & 0xFF;
+        hdr[DEOS_UF_CMD_OFFSET] = DEOS_CMD_SYSTEM_PING;
+        deos_put_u32_le(hdr + DEOS_UF_PAYLOAD_OFFSET, ping_id);
 
         sendto(client_fd, tx_buf, sizeof(tx_buf), 0, (struct sockaddr*)&stm32_addr, sizeof(stm32_addr));
         recvfrom(client_fd, rx_buf, sizeof(rx_buf), 0, NULL, NULL);
@@ -121,17 +123,18 @@ int main() {
         uint32_t ping_id = i + 1000;
 
         // 1. Pack Frame
-        tx_buf[0] = sizeof(deos_header_t) + 4;
-        deos_header_t* hdr = reinterpret_cast<deos_header_t*>(&tx_buf[1]);
-        hdr->priority = DEOS_PRIO_NETWORK;
-        hdr->message_class = DEOS_CLASS_NETWORK;
-        hdr->service = DEOS_SERVICE_SYSTEM;
-        hdr->destination = DEOS_NODE_MAIN_STM32;
-        hdr->source = DEOS_NODE_MICRO_ROS;
-        hdr->version = DEOS_PROTOCOL_VERSION;
-        hdr->sequence = i & 0xFF;
-        hdr->command = DEOS_CMD_SYSTEM_PING;
-        std::memcpy(&tx_buf[9], &ping_id, 4);
+        tx_buf[0] = DEOS_UNIVERSAL_HEADER_SIZE + 4;
+        auto* hdr = tx_buf + 1;
+        hdr[DEOS_UF_LEN_OFFSET] = 4;
+        hdr[DEOS_UF_PRIO_OFFSET] = DEOS_PRIO_NETWORK;
+        hdr[DEOS_UF_CLASS_OFFSET] = DEOS_CLASS_NETWORK;
+        hdr[DEOS_UF_SERVICE_OFFSET] = DEOS_SERVICE_SYSTEM;
+        hdr[DEOS_UF_DEST_OFFSET] = DEOS_NODE_MAIN_STM32;
+        hdr[DEOS_UF_SRC_OFFSET] = DEOS_NODE_ROS_BRIDGE;
+        hdr[DEOS_UF_VER_OFFSET] = DEOS_PROTOCOL_VERSION;
+        hdr[DEOS_UF_SEQ_OFFSET] = i & 0xFF;
+        hdr[DEOS_UF_CMD_OFFSET] = DEOS_CMD_SYSTEM_PING;
+        deos_put_u32_le(hdr + DEOS_UF_PAYLOAD_OFFSET, ping_id);
 
         // 2. High-precision timestamp before send
         auto t_start = Clock::now();
@@ -143,12 +146,10 @@ int main() {
         ssize_t received = recvfrom(client_fd, rx_buf, sizeof(rx_buf), 0, NULL, NULL);
         auto t_end = Clock::now();
 
-        if (received >= 13) {
-            uint8_t frame_len = rx_buf[0];
-            const deos_header_t* rx_hdr = reinterpret_cast<const deos_header_t*>(&rx_buf[1]);
-            if (rx_hdr->command == DEOS_CMD_SYSTEM_PONG) {
-                uint32_t rx_ping_id;
-                std::memcpy(&rx_ping_id, &rx_buf[9], 4);
+        if (received == sizeof(tx_buf)) {
+            const auto* rx_hdr = rx_buf + 1;
+            if (rx_hdr[DEOS_UF_CMD_OFFSET] == DEOS_CMD_SYSTEM_PONG) {
+                const auto rx_ping_id = deos_get_u32_le(rx_hdr + DEOS_UF_PAYLOAD_OFFSET);
                 if (rx_ping_id == ping_id) {
                     double latency_us = std::chrono::duration<double, std::micro>(t_end - t_start).count();
                     latencies_us.push_back(latency_us);
