@@ -47,12 +47,13 @@ topic = "/vehicle/lights/headlight"
 imu_topic = "/sensors/imu/data"
 ping_topic = "/deos/network/ping"
 pong_topic = "/deos/network/pong"
+lighting_topic = "/deos/lighting/response"
 reject = sys.argv[1] == "1"
 for attempt in range(120):
     try:
         status = json.load(urllib.request.urlopen(base + "/api/status", timeout=1))
         if (status["commands"].get(topic) and status["commands"].get(ping_topic)
-                and status["telemetry"].get(pong_topic) and (reject or imu_topic in status["latest"])):
+                and status["telemetry"].get(pong_topic) and status["telemetry"].get(lighting_topic) and (reject or imu_topic in status["latest"])):
             break
     except OSError:
         pass
@@ -70,7 +71,7 @@ else:
 request = urllib.request.Request(base + "/api/command", json.dumps({"topic": topic, "value": True}).encode(),
                                  {"Origin": base, "Content-Type": "application/json"})
 event = json.load(urllib.request.urlopen(request))
-assert event["direction"] == "tx" and event["message"]["data"] is True
+assert event["direction"] == "tx" and event["group"] == "commands" and event["message"]["data"] is True
 ping_id = 0x10203040
 request = urllib.request.Request(base + "/api/command", json.dumps({"topic": ping_topic, "value": ping_id}).encode(),
                                  {"Origin": base, "Content-Type": "application/json"})
@@ -82,7 +83,11 @@ for attempt in range(24):
     time.sleep(.25)
 else:
     raise SystemExit("No matching PONG received")
-print("HTTP: expected IMU behavior and light command TX verified")
+ack = status["latest"][lighting_topic]
+assert ack["group"] == "responses"
+assert ack["message"]["command"] == "TURN_ON"
+assert ack["message"]["result_code"] == 0 and ack["message"]["headlight"] == 1
+print("HTTP: IMU behavior, light response, and matching PONG verified")
 PY
 for attempt in $(seq 1 12); do
     if docker logs "$bridge" 2>&1 | grep -q 'Cmd:TURN_ON'; then break; fi

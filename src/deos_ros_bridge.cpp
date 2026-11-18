@@ -194,6 +194,8 @@ void DeosRosBridge::init_node()
     bms_voltage_pub_ = this->create_publisher<std_msgs::msg::Float32>("/vehicle/bms/voltage", telemetry_qos);
     bms_soc_pub_ = this->create_publisher<std_msgs::msg::Float32>("/vehicle/bms/soc", telemetry_qos);
 
+    lighting_response_pub_ = this->create_publisher<std_msgs::msg::UInt8MultiArray>(
+        "/deos/lighting/response", reliable_qos);
     pong_pub_ = this->create_publisher<std_msgs::msg::UInt32>("/deos/network/pong", reliable_qos);
     ping_sub_ = this->create_subscription<std_msgs::msg::UInt32>("/deos/network/ping", reliable_qos,
         [this](const std_msgs::msg::UInt32& message) { send_ping(message.data); });
@@ -264,6 +266,27 @@ void DeosRosBridge::init_handlers()
             pong.data = id;
             pong_pub_->publish(pong);
         });
+
+    const auto publish_lighting_response =
+        [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {
+            if (header.source != DEOS_NODE_MAIN_STM32 ||
+                header.destination != codec_->source_node_id() || len == 0) {
+                return;
+            }
+            const auto expected_length = payload[0] == DEOS_RESULT_SUCCESS
+                ? 1 + sizeof(deos_lighting_status_payload) : 1;
+            if (len != expected_length) {
+                return;
+            }
+            std_msgs::msg::UInt8MultiArray response;
+            response.data.push_back(header.command);
+            response.data.insert(response.data.end(), payload, payload + len);
+            lighting_response_pub_->publish(response);
+        };
+    for (const auto command : {DEOS_CMD_LIGHTING_TURN_ON, DEOS_CMD_LIGHTING_TURN_OFF}) {
+        dispatcher_->register_handler(DEOS_CLASS_RESPONSE, DEOS_SERVICE_LIGHTING, command,
+                                      publish_lighting_response);
+    }
 
     dispatcher_->register_handler(DEOS_CLASS_RESPONSE, DEOS_SERVICE_SYSTEM, DEOS_CMD_SYSTEM_SUBSCRIBE,
         [this](const deos_header_t& header, const uint8_t* payload, uint8_t len) {

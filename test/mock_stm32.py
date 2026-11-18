@@ -13,6 +13,8 @@ import deos
 
 IMU_KEY = bytes((deos.SERVICE_SENSORS, 1))
 UNSUPPORTED = 1
+LIGHTING_TURN_ON, LIGHTING_TURN_OFF = 1, 2
+LIGHT_INDEX = {1: 0, 2: 1, 3: 2, 4: 3}
 
 
 class MockStm32:
@@ -23,6 +25,7 @@ class MockStm32:
         self.interval = None
         self.next_sample = None
         self.sequence = 0
+        self.lights = [0] * 4
 
     def send(self, **fields):
         frame = deos.DeosMessage(destination=deos.NODE_ROS_BRIDGE,
@@ -46,6 +49,15 @@ class MockStm32:
             self.send(source=deos.NODE_MAIN_STM32, message_class=deos.CLASS_NETWORK,
                       priority=deos.PRIO_NETWORK, service=deos.SERVICE_SYSTEM,
                       command=deos.CMD_SYSTEM_PONG, payload=message.payload)
+            return
+        if (key[:3] == (deos.NODE_MAIN_STM32, deos.CLASS_COMMAND, deos.SERVICE_LIGHTING)
+                and message.command in (LIGHTING_TURN_ON, LIGHTING_TURN_OFF)
+                and len(message.payload) == 1 and message.payload[0] in LIGHT_INDEX):
+            self.client = peer
+            self.lights[LIGHT_INDEX[message.payload[0]]] = int(message.command == LIGHTING_TURN_ON)
+            self.send(source=deos.NODE_MAIN_STM32, message_class=deos.CLASS_RESPONSE,
+                      priority=message.priority, service=deos.SERVICE_LIGHTING,
+                      command=message.command, payload=bytes([0, *self.lights, 0, 0]))
             return
         if key != (deos.NODE_IMU, deos.CLASS_REQUEST, deos.SERVICE_SYSTEM, deos.CMD_SYSTEM_SUBSCRIBE):
             return

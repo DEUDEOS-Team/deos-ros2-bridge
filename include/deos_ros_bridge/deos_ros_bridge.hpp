@@ -5,6 +5,7 @@
 #include <std_msgs/msg/bool.hpp>
 #include <std_msgs/msg/float32.hpp>
 #include <std_msgs/msg/u_int8.hpp>
+#include <std_msgs/msg/u_int8_multi_array.hpp>
 #include <std_msgs/msg/u_int32.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 
@@ -70,6 +71,7 @@ private:
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lights_brake_sub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr lights_headlight_sub_;
 
+    rclcpp::Publisher<std_msgs::msg::UInt8MultiArray>::SharedPtr lighting_response_pub_;
     rclcpp::Publisher<std_msgs::msg::UInt32>::SharedPtr pong_pub_;
     rclcpp::Subscription<std_msgs::msg::UInt32>::SharedPtr ping_sub_;
     std::mutex ping_mutex_;
