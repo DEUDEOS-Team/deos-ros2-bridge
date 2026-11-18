@@ -26,7 +26,15 @@ bridge=$(docker run -d --rm --init --network "$network" -e ROS_DOMAIN_ID=42 \
   -e REJECT_IMU="$reject_imu" -v "$repo:/fixture:ro" "$bridge_image" bash -c '
     mock_args=()
     if [ "$REJECT_IMU" = 1 ]; then mock_args+=(--reject-imu); fi
-    python3 /fixture/test/mock_stm32.py "${mock_args[@]}" &
+    python3 /fixture/test/mock_stm32.py "${mock_args[@]}" >/tmp/stm32.log 2>&1 &
+    stm32=$!
+    for attempt in $(seq 1 100); do
+        if grep -q "UDP test peer ready" /tmp/stm32.log; then break; fi
+        if ! kill -0 "$stm32" 2>/dev/null; then cat /tmp/stm32.log; exit 1; fi
+        sleep .1
+    done
+    grep -q "UDP test peer ready" /tmp/stm32.log || { cat /tmp/stm32.log; exit 1; }
+    tail -n +1 --follow=name --sleep-interval=.1 /tmp/stm32.log &
     exec ros2 run deos_ros_bridge deos_ros_bridge_node --ros-args -p udp_remote_ip:=127.0.0.1
 ')
 docker exec -i "$mock" python3 - "$reject_imu" <<'PY'
@@ -38,7 +46,7 @@ base = "http://127.0.0.1:8765"
 topic = "/vehicle/lights/headlight"
 imu_topic = "/sensors/imu/data"
 reject = sys.argv[1] == "1"
-for attempt in range(60):
+for attempt in range(120):
     try:
         status = json.load(urllib.request.urlopen(base + "/api/status", timeout=1))
         if status["commands"].get(topic) and (reject or imu_topic in status["latest"]):

@@ -84,6 +84,7 @@ def main():
     args = parser.parse_args()
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
         sock.bind(("127.0.0.1", args.port))
+        print("UDP test peer ready", flush=True)
         MockStm32(sock, args.reject_imu).run()
 
 
