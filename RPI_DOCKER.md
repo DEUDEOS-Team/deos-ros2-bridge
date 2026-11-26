@@ -7,7 +7,7 @@ Bu imaj 64 bit Raspberry Pi OS veya 64 bit Ubuntu çalıştıran Raspberry Pi'le
 
 Güncel dağıtım `deploy/compose.yaml` ve `config/params.yaml` dosyalarını main
 commit'iyle birlikte kullanır. STM32 adresi, port ve kalibrasyonları repoda
-düzenle. Pi'de her sürümün kendi parametre kopyası bağlanır.
+düzenle. Parametreler doğrudan imajın içinden kullanılır.
 GitHub CI başarılı olduğunda Pi imajı derleyip konteyneri Compose ile yeniler.
 Kurulum ve geri dönüş ayrıntıları [ops rehberinde](ops/README.md).
 

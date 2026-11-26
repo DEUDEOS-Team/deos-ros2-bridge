@@ -58,14 +58,12 @@ commit'i için GitHub'daki `ci.yml` workflow'unun aynı commit'e ait main push
 çalışmasının başarıyla tamamlanması gerekir. CI bekliyorsa sonraki kontrolde
 tekrar bakılır. Başarısız CI veya API erişim hatası dağıtımı engeller.
 
-Onaylanan kaynaklar ve alt modüller `releases/COMMIT` altında ayrı bir kopyaya
-çıkarılır. Derleme ve konteyner başlatma bu sürümün Compose tanımından yapılır.
-Parametre dosyası aynı sürüm dizininden salt okunur bağlanır. Böylece ileride
-source klasörü güncellense de çalışan konteynerin parametreleri korunur.
-
-Yeni konteyner sağlıklı başlatılamazsa önceki konteyner, kendi imajı ve sürüm
-parametreleriyle geri getirilir. Başarılı commit `deployed-revision` dosyasına
-yazılır. Önceki konteyner `deos-ros-bridge-previous` adıyla tutulur.
+Onaylanan kaynak source klasörüne çekilir ve Compose ile imaj derlenir.
+Parametreler imajın içindeki `config/params.yaml` kopyasından kullanılır.
+Yeni konteynerin sağlık kontrolü geçerse commit kaydedilir. Başlatma hatasında
+önceki konteyner geri açılır. Kaynak kod için ayrı sürüm klasörleri oluşturulmaz.
+Çalışan ve önceki imaj ile iki küçük Compose dosyası tutulur. Diğer kullanılmayan
+bridge imajları başarılı güncellemeden sonra silinir.
 
 İlk kurulum veya güncelleyici kodu değişikliğinde Pi'de repo kökünden çalıştır.
 
@@ -95,4 +93,4 @@ docker inspect deos-ros-bridge --format '{{.State.Health.Status}}'
 
 Healthcheck bridge sürecini denetler. STM32 hattını PING/PONG veya telemetriyle
 ayrıca kontrol et. Yeni sürüm ve kalibrasyon dosyasını dağıtımdan önce birlikte
-doğrula. Eski sürüm dizinleri geri dönüş için saklanır.
+doğrula. Önceki konteyner geri dönüş için saklanır.

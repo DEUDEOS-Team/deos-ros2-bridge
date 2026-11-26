@@ -13,19 +13,6 @@ services:
       ROS_DOMAIN_ID: "0"
       RMW_IMPLEMENTATION: rmw_fastrtps_cpp
       FASTDDS_BUILTIN_TRANSPORTS: UDPv4
-    volumes:
-      - type: bind
-        source: ../config/params.yaml
-        target: /config/params.yaml
-        read_only: true
-        bind:
-          create_host_path: false
-    command:
-      - ros2
-      - launch
-      - deos_ros_bridge
-      - bridge.launch.py
-      - params_file:=/config/params.yaml
     healthcheck:
       test: [CMD-SHELL, "pgrep -f '^/opt/deos/lib/deos_ros_bridge/deos_ros_bridge_node' >/dev/null"]
       interval: 5s

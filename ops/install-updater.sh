@@ -7,9 +7,7 @@ install -d -o deos -g deos -m 755 "$base"
 exec 9>"$base/update.lock"
 chown deos:deos "$base/update.lock"
 flock -x 9
-install -m 644 "$repo/ops/updater.py" "$base/updater.py.new"
 install -m 755 "$repo/ops/update-bridge.sh" "$base/update-bridge.sh.new"
-mv "$base/updater.py.new" "$base/updater.py"
 mv "$base/update-bridge.sh.new" "$base/update-bridge.sh"
 install -m 644 "$repo/ops/deos-bridge-update.service" /etc/systemd/system/
 systemctl daemon-reload
