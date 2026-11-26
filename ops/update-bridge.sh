@@ -1,7 +1,7 @@
 #!/bin/bash
 set -Eeuo pipefail
 export GIT_TERMINAL_PROMPT=0
-base=/home/deos/deos-bridge-updater
+base=/opt/deos/bridge-updater
 source_dir="$base/source"
 params=/home/deos/deos_ros_bridge/params.yaml
 container=deos-ros-bridge

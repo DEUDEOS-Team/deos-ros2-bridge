@@ -3,7 +3,7 @@ set -euo pipefail
 test "$(id -u)" = 0 || { echo 'Run with sudo'; exit 1; }
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 python3 -c 'import yaml'
-test -f /home/deos/deos-bridge-updater/update-bridge.sh
+test -f /opt/deos/bridge-updater/update-bridge.sh
 systemctl cat deos-bridge-update.service >/dev/null
 install -d -m 755 /etc/deos /usr/local/lib/deos /var/lib/deos
 install -m 644 "$repo/ops/mode.py" /usr/local/lib/deos/mode.py

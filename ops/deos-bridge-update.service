@@ -8,5 +8,5 @@ Requires=docker.service
 Type=oneshot
 User=deos
 Environment=HOME=/home/deos
-ExecStart=/bin/bash /home/deos/deos-bridge-updater/update-bridge.sh
+ExecStart=/bin/bash /opt/deos/bridge-updater/update-bridge.sh
 TimeoutStartSec=45min

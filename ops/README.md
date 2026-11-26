@@ -50,7 +50,7 @@ Görevlerin etkinliği ve periyotları aynı dosyada tutulur.
 ## Mevcut bridge dağıtım servisi
 
 `deos-bridge-update.service`, GitHub `DEUDEOS-Team/deos-ros2-bridge` reposunun
-`main` dalını `/home/deos/deos-bridge-updater/source` altına çeker. Yeni commit
+`main` dalını `/opt/deos/bridge-updater/source` altına çeker. Yeni commit
 için C++ testlerini çalıştırır ve Docker imajını Pi üzerinde derler. Parametreler
 `/home/deos/deos_ros_bridge/params.yaml` dosyasından alınır. Başarılı başlangıç
 sonrası commit `deployed-revision` dosyasına kaydedilir. Önceki konteyner
