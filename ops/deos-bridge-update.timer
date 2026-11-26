@@ -1,0 +1,10 @@
+[Unit]
+Description=Check DEOS bridge main every two minutes
+
+[Timer]
+OnBootSec=90s
+OnUnitInactiveSec=2min
+Unit=deos-bridge-update.service
+
+[Install]
+WantedBy=timers.target

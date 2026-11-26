@@ -1,6 +1,6 @@
 # DEOS protokol ve firmware incelemesi
 
-İncelenen firmware `5cb57e7`, taşınabilir protokol `70d846f`.
+İncelenen firmware `5cb57e7`, taşınabilir protokol `0ebda91` (v1.2, `0x12`; önceki inceleme: `70d846f`).
 Bridge, bu protokol revizyonunu `vendor/deos_protocol` alt modülünden derler.
 
 ## Ethernet ve IMU
@@ -28,21 +28,15 @@ Bridge, bu protokol revizyonunu `vendor/deos_protocol` alt modülünden derler.
   `deos_send_response` bunun başına ayrıca genel sonuç kodunu ekler.
   Bridge firmware'in ilk sonuç baytını kullanır.
 
-## Taşınabilir kütüphane bulguları
+## Taşınabilir kütüphane bulguları (`vendor/deos_protocol`)
 
-- `src/deos_frame.c`: decoder, bildirilen payload eksikse hata veriyor
-  ancak payload sonundaki fazladan baytı kabul ediyor. Masaüstünde sıfır
-  payload ve bir fazla bayt ile dönüş değeri 0 olarak doğrulandı.
-  Bridge hem UDP uzunluk önekini hem tam Universal Header uzunluğunu denetler.
-- `src/deos_registry.c`: wildcard önce kaydedilmişse eşleşen bir unicast
-  mesajı wildcard ve düğüme özel callback'leri birlikte tetikleyebiliyor.
-  İki callback ile masaüstünde doğrulandı. Bridge yalnızca düğüme özel
-  kayıtlar kullanır.
-- `python/deos.py`: registry tamponu sabit 1300 bayt. C kütüphanesi
-  kapasiteyle birlikte yapıyı büyütüyor. Örneğin masaüstünde 64 girişlik
-  yapı 2568 bayt. Ayrıca Python little-endian getter'ları kısa girişin
-  uzunluğunu doğrulamadan sabit genişlik okuyan C fonksiyonunu çağırır.
-  Bridge C registry ve codec'i kullanır. Sahte STM32, Python registry
-  kullanmaz ve payload genişliğini okumadan önce denetler.
-- `include/deos/deos_types.h`: C99 esnek dizi alanı, Jazzy'nin C++
-  derlemesinde pedantic uyarısı üretiyor. Derleme tamamlanıyor.
+Aşağıdaki 6 bulgu ilk olarak `70d846f` revizyonunda tespit edilmiş, **`0ebda91` (v1.2 / `0x12`) güncellemesi ile tümü üst akışta (`deos-protocol`) çözülmüştür**:
+
+- **#1 Python Traction komut ID'leri (`0x04`, `0x05`):** Çözüldü — `python/deos.py` artık tüm `DEOS_*` sabitlerini doğrudan C başlıklarından (`deos_icd.h`, `deos_frame.h`, `deos_types.h`) dinamik olarak okur.
+- **#2 Python `DeosRegistry` tampon taşması ve `ctypes` enum ABI:** Çözüldü — C tarafına `deos_registry_sizeof()` eklendi, Python tamponu çalışma zamanı boyutuna göre ayırıyor, enum argümanları `ctypes.c_int` yapıldı ve `DeosRegistry(local_node)` zorunlu kılındı.
+- **#3 Python LE getter uzunluk kontrolü:** Çözüldü — `get_u16_le`/`get_i16_le`/`get_u32_le`/`get_i32_le` eksik girişte `ValueError` fırlatıyor.
+- **#4 `deos_frame_decode` fazla bayt ve versiyon doğrulaması:** Çözüldü — artık `version != DEOS_PROTOCOL_VERSION` (`-EPROTONOSUPPORT`) ve `9 + payload_len != frame_len` (`-EBADMSG`) kontrol ediliyor.
+- **#5 `deos_registry_dispatch` unicast + wildcard çift tetikleme:** Çözüldü — unicast mesajlarda tam düğüm eşleşmesi wildcard (`0xFF`) yedeğine öncelikli, implicit `deos_registry_register()` sarmalayıcısı kaldırıldı (`deos_registry_register_for_node` kullanılıyor).
+- **#6 `deos_types.h` C++ `-Wpedantic` uyarısı:** Çözüldü — `deos_parameter_payload::value[]` için `__extension__` eklendi; `-Wall -Wextra -Wpedantic` ile sıfır uyarı ile derleniyor.
+
+> **Sürüm uyumluluğu notu:** `DEOS_PROTOCOL_VERSION` `0x11`'den `0x12`'ye yükseltildi ve `deos_frame_decode` artık versiyon uyuşmazlığını reddediyor. Gerçek STM32 firmware ve `deos_stm32_emulator` düğümlerinin de v1.2 (`0x12`) protokolüne güncellenmesi gerekir.

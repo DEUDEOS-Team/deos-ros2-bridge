@@ -125,11 +125,24 @@ void test_codec_and_mock_transport() {
     uint8_t payload_len = 0;
     bool valid = codec.decode_frame(pkt.data(), pkt.size(), hdr, payload_ptr, payload_len);
     assert(valid);
+    assert(hdr.version == DEOS_PROTOCOL_VERSION);
+    assert(hdr.version == 0x12);
     assert(hdr.service == DEOS_SERVICE_TRACTION);
     assert(hdr.command == DEOS_CMD_TRACTION_SET_GEAR);
     assert(hdr.source == DEOS_NODE_ROS_BRIDGE);
     assert(payload_len == 1);
     assert(payload_ptr[0] == DEOS_GEAR_DRIVE);
+
+    // Reject legacy v1.1 (0x11) frame
+    auto legacy_pkt = pkt;
+    legacy_pkt[1 + DEOS_UF_VER_OFFSET] = 0x11;
+    assert(!codec.decode_frame(legacy_pkt.data(), legacy_pkt.size(), hdr, payload_ptr, payload_len));
+
+    // Reject frame with trailing byte
+    auto trailing_pkt = pkt;
+    trailing_pkt[0] = static_cast<uint8_t>(trailing_pkt[0] + 1);
+    trailing_pkt.push_back(0x00);
+    assert(!codec.decode_frame(trailing_pkt.data(), trailing_pkt.size(), hdr, payload_ptr, payload_len));
 
     std::cout << "PASSED\n";
 }

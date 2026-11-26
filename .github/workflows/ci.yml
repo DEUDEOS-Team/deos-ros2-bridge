@@ -1,0 +1,17 @@
+name: Bridge CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Run C++ unit tests
+        run: bash ops/test-unit.sh
+      - name: Build ROS 2 bridge image
+        run: docker build -t deos-ros-bridge:ci .

@@ -1,0 +1,12 @@
+[Unit]
+Description=Build and deploy DEOS bridge from GitHub main
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=deos
+Environment=HOME=/home/deos
+ExecStart=/bin/bash /home/deos/deos-bridge-updater/update-bridge.sh
+TimeoutStartSec=45min
