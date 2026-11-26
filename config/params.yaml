@@ -23,7 +23,7 @@
       # 2. Ağ ve Hedef STM32 VCU İletişimi
       # ------------------------------------------------------------------------
       udp_remote_ip: "192.168.1.10"    # Hedef Main STM32 / VCU Ethernet IP adresi
-      udp_remote_port: 5001            # Hedef Main STM32 DEOS UDP portu
+      udp_remote_port: 5001            # Pi ve Main STM32 için ortak UDP port numarası
 
       # ------------------------------------------------------------------------
       # 3. Güvenlik Bekçisi ve Zaman Aşımları (Watchdog Failsafe)

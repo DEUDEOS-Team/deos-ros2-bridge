@@ -34,6 +34,8 @@ class MockStm32:
         self.socket.sendto(bytes([len(frame)]) + frame, self.client)
 
     def handle(self, datagram, peer):
+        if peer[1] != self.socket.getsockname()[1]:
+            raise RuntimeError(f"Unexpected bridge source port: {peer[1]}")
         if not datagram or datagram[0] != len(datagram) - 1:
             return
         message = deos.DeosMessage.decode(datagram[1:])

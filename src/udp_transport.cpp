@@ -63,6 +63,17 @@ bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port)
         return false;
     }
 
+    sockaddr_in local_addr{};
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    local_addr.sin_port = htons(remote_port);
+    if (::bind(fd, reinterpret_cast<const sockaddr*>(&local_addr), sizeof(local_addr)) < 0) {
+        std::cerr << "[UdpTransport] Failed to bind local UDP port " << remote_port
+                  << ": " << std::strerror(errno) << std::endl;
+        ::close(fd);
+        return false;
+    }
+
     if (::connect(fd, reinterpret_cast<const sockaddr*>(&remote_addr_), sizeof(remote_addr_)) < 0) {
         std::cerr << "[UdpTransport] UDP connect failed: " << std::strerror(errno) << std::endl;
         ::close(fd);
@@ -72,7 +83,8 @@ bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port)
     remote_ip_ = remote_ip;
     remote_port_ = remote_port;
     socket_fd_.store(fd);
-    std::cout << "[UdpTransport] Socket ready, remote target: " << remote_ip << ":" << remote_port << std::endl;
+    std::cout << "[UdpTransport] Local UDP port " << remote_port << ", remote target: "
+              << remote_ip << ":" << remote_port << std::endl;
     return true;
 }
 

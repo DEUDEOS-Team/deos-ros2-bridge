@@ -3,6 +3,7 @@ set -eu
 repo=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 bridge_image=${BRIDGE_IMAGE:-deos-ros-bridge:universal-amd64}
 mock_image=${MOCK_IMAGE:-deos-ros-mock:jazzy}
+stm32_image=${STM32_IMAGE:-}
 reject_imu=0
 if [ "${1:-}" = "--reject-imu" ]; then
     reject_imu=1
@@ -27,9 +28,13 @@ trap cleanup EXIT
 network=$(docker network create --internal "deos-e2e-$$")
 mock_args=()
 if [ "$reject_imu" = 1 ]; then mock_args+=(--reject-imu); fi
-stm32=$(docker run -d --rm --init --network "$network" \
-  -v "$repo:/fixture:ro" --entrypoint python3 "$mock_image" \
-  /fixture/test/mock_stm32.py --bind 0.0.0.0 "${mock_args[@]}")
+if [ -n "$stm32_image" ]; then
+    stm32=$(docker run -d --rm --init --network "$network" "$stm32_image" "${mock_args[@]}")
+else
+    stm32=$(docker run -d --rm --init --network "$network" \
+      -v "$repo:/fixture:ro" --entrypoint python3 "$mock_image" \
+      /fixture/test/mock_stm32.py --bind 0.0.0.0 "${mock_args[@]}")
+fi
 for attempt in $(seq 1 100); do
     if docker logs "$stm32" 2>&1 | grep -q "UDP test peer ready"; then break; fi
     sleep .1

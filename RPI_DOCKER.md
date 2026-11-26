@@ -36,9 +36,17 @@ sudo docker buildx build --platform linux/arm64 --load -t deos-ros-bridge:univer
 
 ## 3. STM32 ve ROS 2 ayarlarını yap
 
-Pi'de `params.yaml` içindeki `udp_remote_ip` ve `udp_remote_port` değerlerini
-STM32'ye göre ayarla. Araç için `wheelbase` ve `max_steering_angle_rad`
-değerlerini kontrol et. Pi'den STM32'nin IP adresine ağ rotası olmalı.
+Pi'nin STM32'ye bağlı Ethernet arayüzüne `192.168.1.20/24` sabit adresini ver.
+Main STM32'nin adresi `192.168.1.10` ve `params.yaml` içindeki
+`udp_remote_ip` değeri bu adresle eşleşmeli. `udp_remote_port: 5001` değeri
+hem Pi'nin yerel UDP portunu hem de STM32'nin hedef UDP portunu belirler.
+Main STM32 firmware'i uzak uç olarak `192.168.1.20` adresini ve UDP `5001`
+portunu kullanır. Araç için `wheelbase` ve `max_steering_angle_rad` değerlerini
+kontrol et.
+
+Textual, Main STM32'nin `192.168.1.10:5000` adresine TCP ile bağlanır. Pi
+tarafında da kaynak port `5000` olacaksa Textual istemcisi TCP soketini
+bağlantıyı açmadan önce `192.168.1.20:5000` adresine bağlamalıdır.
 
 Aşağıdaki komutu `params.yaml` dosyasının bulunduğu dizinden çalıştır.
 `ROS_DOMAIN_ID` değerini diğer ROS 2 düğümleriyle aynı seç. Host ağı,
@@ -84,10 +92,10 @@ Bridge başlangıçta IMU'ya bir SUBSCRIBE isteği gönderir. `imu_interval_ms`
 varsayılan olarak 100 ms'dir. Kira süresi sıfırdır ve bridge aboneliği
 periyodik olarak yenilemez. ROS 2 IMU topic'i best-effort QoS kullanır.
 
-Firmware `5cb57e7` üzerindeki IMU handler eksikliği nedeniyle gerçek karttan
-`STM32 rejected IMU subscription (result 1)` mesajı beklenir. Bridge çalışmaya
-devam eder. IMU verisi için kart tarafında ilgili abonelik handler'ı ve
-yayın akışı gerekir. Ayrıntılar [protokol incelemesinde](PROTOCOL_REVIEW.md).
+Güncel Main STM32 test firmware'i IMU aboneliğine örnek veri döndürür.
+Kartı bridge'den önce çalıştır ki açılıştaki tek seferlik abonelik isteğini
+alabilsin. UDP soketi açıldıktan sonra STM32 kendi durum mesajlarını
+önceden bir paket almadan Pi'ye gönderebilir.
 
 ROS 2 tarafında Main STM32 bağlantısını elle sınamak için tek bir PING
 gönderilebilir. İlk komutu bir terminalde, ikinciyi başka bir terminalde
@@ -97,3 +105,20 @@ gönderilebilir. İlk komutu bir terminalde, ikinciyi başka bir terminalde
 sudo docker exec -it deos-ros-bridge bash /deos_entrypoint.sh ros2 topic echo /deos/network/pong
 sudo docker exec deos-ros-bridge bash /deos_entrypoint.sh ros2 topic pub --once /deos/network/ping std_msgs/msg/UInt32 '{data: 42}'
 ```
+
+## 6. İsteğe bağlı ROS 2 Mock panelini çalıştır
+
+`deos-ros-mock-jazzy-arm64.tar.gz` dosyasını Pi'ye kopyalayıp ayrı bir
+konteyner olarak başlat. `ROS_DOMAIN_ID` değeri bridge ile aynı olmalı.
+
+```bash
+sudo docker load -i deos-ros-mock-jazzy-arm64.tar.gz
+sudo docker run -d --rm --name deos-ros-mock --network host --init \
+  -e ROS_DOMAIN_ID=0 -e FASTDDS_BUILTIN_TRANSPORTS=UDPv4 \
+  deos-ros-mock:jazzy-arm64
+```
+
+Panel Pi'de `http://127.0.0.1:8765` adresinde açılır. Başka bir bilgisayardan
+bakmak için `ssh -L 8765:127.0.0.1:8765 kullanici@192.168.1.20` ile bağlan ve
+kendi tarayıcında aynı adresi aç. Test komutlarını kullanmak istersen mock
+başlatma komutunun sonuna `--enable-commands` ekle.

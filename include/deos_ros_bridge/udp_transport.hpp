@@ -30,7 +30,7 @@ public:
     UdpTransport& operator=(UdpTransport&& other) noexcept;
 
     /**
-     * @brief Initialize or reconfigure UDP socket targeting the STM32
+     * @brief Bind the local UDP socket to the same port number as the STM32 and set the remote peer
      */
     bool init(const std::string& remote_ip, uint16_t remote_port);
 
