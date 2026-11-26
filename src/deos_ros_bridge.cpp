@@ -230,8 +230,8 @@ void DeosRosBridge::init_node()
     timeout_timer_ = this->create_wall_timer(
         50ms, std::bind(&DeosRosBridge::check_timeouts, this));
 
-    RCLCPP_INFO(this->get_logger(), "DEOS ROS 2 Bridge Node initialized with Advanced OOP architecture (Node ID: 0x%02X).",
-                codec_->source_node_id());
+    RCLCPP_INFO(this->get_logger(), "DEOS ROS 2 Bridge Node initialized (Node ID: 0x%02X, protocol: 0x%02X).",
+                codec_->source_node_id(), DEOS_PROTOCOL_VERSION);
 }
 
 void DeosRosBridge::init_handlers()
