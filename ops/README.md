@@ -47,23 +47,52 @@ python3 -m unittest discover -s ops/tests -v
 Yeni bir otomasyon eklenirken YAML doğrulamasına ve görev listesine eklenir.
 Görevlerin etkinliği ve periyotları aynı dosyada tutulur.
 
-## Mevcut bridge dağıtım servisi
+## Bridge dağıtımı
 
-`deos-bridge-update.service`, GitHub `DEUDEOS-Team/deos-ros2-bridge` reposunun
-`main` dalını `/opt/deos/bridge-updater/source` altına çeker. Yeni commit
-için C++ testlerini çalıştırır ve Docker imajını Pi üzerinde derler. Parametreler
-`/home/deos/deos_ros_bridge/params.yaml` dosyasından alınır. Başarılı başlangıç
-sonrası commit `deployed-revision` dosyasına kaydedilir. Önceki konteyner
-`deos-ros-bridge-previous` adıyla saklanır ve başlangıç hatasında geri getirilir.
+Bridge kodu, Dockerfile, `deploy/compose.yaml` ve `config/params.yaml` aynı
+main commit'inden dağıtılır. STM32 adresi, port, kalibrasyonlar ve tüm bridge
+parametreleri repoda tutulur. Konteyner ayarları Compose üzerinden yönetilir.
 
-Dağıtım kontrolü ROS bridge sürecinin açıldığını doğrular. STM32 erişimi için
-ayrıca PING/PONG veya telemetri kontrolü gerekir. İmajlar
-`deos-ros-bridge:main-COMMIT` etiketiyle saklanır.
+Pi'deki sabit güncelleyici `/opt/deos/bridge-updater` altındadır. Yeni main
+commit'i için GitHub'daki `ci.yml` workflow'unun aynı commit'e ait main push
+çalışmasının başarıyla tamamlanması gerekir. CI bekliyorsa sonraki kontrolde
+tekrar bakılır. Başarısız CI veya API erişim hatası dağıtımı engeller.
+
+Onaylanan kaynaklar ve alt modüller `releases/COMMIT` altında ayrı bir kopyaya
+çıkarılır. Derleme ve konteyner başlatma bu sürümün Compose tanımından yapılır.
+Parametre dosyası aynı sürüm dizininden salt okunur bağlanır. Böylece ileride
+source klasörü güncellense de çalışan konteynerin parametreleri korunur.
+
+Yeni konteyner sağlıklı başlatılamazsa önceki konteyner, kendi imajı ve sürüm
+parametreleriyle geri getirilir. Başarılı commit `deployed-revision` dosyasına
+yazılır. Önceki konteyner `deos-ros-bridge-previous` adıyla tutulur.
+
+İlk kurulum veya güncelleyici kodu değişikliğinde Pi'de repo kökünden çalıştır.
+
+```bash
+sudo bash ops/install-updater.sh
+```
+
+Bu kurulum, bridge güncelleme servisini kurar. Tetikleme mevcut sistem
+zamanlayıcısı tarafından yapılır. Developer/prod yöneticisinin ayarları ayrı
+`/etc/deos/system.yaml` dosyasından yönetilir.
+
+Ubuntu'da aynı konteyner tanımını kullanmak için repo kökünden çalıştır.
+
+```bash
+docker compose --env-file /dev/null -f deploy/compose.yaml up -d --build
+```
+
+Pi otomasyonu imajı `main-COMMIT` etiketiyle derler. ROS_DOMAIN_ID, DDS, ağ,
+restart politikası ve başlatma komutu Compose dosyasından gelir. Parametreleri
+repodaki config dosyasında değiştirip main'e gönder. Pi'deki eski
+`/home/deos/deos_ros_bridge/params.yaml` aktif dağıtımda kullanılmaz.
 
 ```bash
 journalctl -u deos-bridge-update.service -f
+docker inspect deos-ros-bridge --format '{{.State.Health.Status}}'
 ```
 
-Eski bağımsız timer, mod yöneticisi kullanıldığında kapalı tutulmalıdır.
-GitHub Actions `main` push ve pull request'lerinde C++ testlerini, mod
-yöneticisi testlerini ve Docker derlemesini çalıştırır.
+Healthcheck bridge sürecini denetler. STM32 hattını PING/PONG veya telemetriyle
+ayrıca kontrol et. Yeni sürüm ve kalibrasyon dosyasını dağıtımdan önce birlikte
+doğrula. Eski sürüm dizinleri geri dönüş için saklanır.

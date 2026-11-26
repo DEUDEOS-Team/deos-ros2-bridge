@@ -3,6 +3,16 @@
 Bu imaj 64 bit Raspberry Pi OS veya 64 bit Ubuntu çalıştıran Raspberry Pi'ler için
 `linux/arm64` olarak derlenir. ROS 2 Jazzy imajın içinde gelir.
 
+## Git üzerinden otomatik dağıtım
+
+Güncel dağıtım `deploy/compose.yaml` ve `config/params.yaml` dosyalarını main
+commit'iyle birlikte kullanır. STM32 adresi, port ve kalibrasyonları repoda
+düzenle. Pi'de her sürümün kendi parametre kopyası bağlanır.
+GitHub CI başarılı olduğunda Pi imajı derleyip konteyneri Compose ile yeniler.
+Kurulum ve geri dönüş ayrıntıları [ops rehberinde](ops/README.md).
+
+Aşağıdaki arşiv ve docker run adımları elle kurulum içindir.
+
 ## 1. Raspberry Pi'ye Docker kur
 
 `dpkg --print-architecture` komutu `arm64` döndürmeli. Docker kurulu değilse
