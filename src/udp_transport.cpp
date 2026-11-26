@@ -43,7 +43,8 @@ UdpTransport& UdpTransport::operator=(UdpTransport&& other) noexcept {
     return *this;
 }
 
-bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port) 
+bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port,
+                        const std::string& interface)
 {
     close();
 
@@ -74,8 +75,13 @@ bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port)
         return false;
     }
 
-    if (::connect(fd, reinterpret_cast<const sockaddr*>(&remote_addr_), sizeof(remote_addr_)) < 0) {
-        std::cerr << "[UdpTransport] UDP connect failed: " << std::strerror(errno) << std::endl;
+    // Keep the socket unconnected so the source address is selected after link-up.
+    // Binding to a device prevents routing STM32 traffic through Wi-Fi.
+    if (!interface.empty() &&
+        setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, interface.c_str(),
+                   interface.size() + 1) < 0) {
+        std::cerr << "[UdpTransport] Failed to bind interface " << interface
+                  << ": " << std::strerror(errno) << std::endl;
         ::close(fd);
         return false;
     }
@@ -84,7 +90,8 @@ bool UdpTransport::init(const std::string& remote_ip, uint16_t remote_port)
     remote_port_ = remote_port;
     socket_fd_.store(fd);
     std::cout << "[UdpTransport] Local UDP port " << remote_port << ", remote target: "
-              << remote_ip << ":" << remote_port << std::endl;
+              << remote_ip << ":" << remote_port << ", interface: "
+              << (interface.empty() ? "automatic" : interface) << std::endl;
     return true;
 }
 
@@ -96,6 +103,8 @@ bool UdpTransport::send_iovec(const struct iovec* iov, size_t iovcnt) {
 
     struct msghdr msg;
     std::memset(&msg, 0, sizeof(msg));
+    msg.msg_name = &remote_addr_;
+    msg.msg_namelen = sizeof(remote_addr_);
     msg.msg_iov = const_cast<struct iovec*>(iov);
     msg.msg_iovlen = iovcnt;
 
@@ -137,8 +146,13 @@ void UdpTransport::poll(int timeout_ms) {
     int ret = ::poll(&pfd, 1, timeout_ms);
     if (ret > 0 && (pfd.revents & POLLIN)) {
         uint8_t buffer[2048];
-        const ssize_t received = recv(fd, buffer, sizeof(buffer), MSG_DONTWAIT);
-        if (received > 0 && rx_callback_) {
+        sockaddr_in sender{};
+        socklen_t sender_len = sizeof(sender);
+        const ssize_t received = recvfrom(fd, buffer, sizeof(buffer), MSG_DONTWAIT,
+                                         reinterpret_cast<sockaddr*>(&sender), &sender_len);
+        if (received > 0 && rx_callback_ &&
+            sender.sin_addr.s_addr == remote_addr_.sin_addr.s_addr &&
+            sender.sin_port == remote_addr_.sin_port) {
             rx_callback_(buffer, static_cast<size_t>(received));
         }
     }

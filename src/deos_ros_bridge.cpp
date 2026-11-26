@@ -40,6 +40,7 @@ void DeosRosBridge::init_node()
     // -----------------------------------------------------------------
     this->declare_parameter<double>("wheelbase", 2.0);
     this->declare_parameter<double>("max_steering_angle_rad", 0.60);
+    this->declare_parameter<std::string>("udp_interface", "eth0");
     this->declare_parameter<std::string>("udp_remote_ip", "192.168.1.10");
     this->declare_parameter<int>("udp_remote_port", 5001);
     this->declare_parameter<int>("imu_interval_ms", 100);
@@ -131,7 +132,8 @@ void DeosRosBridge::init_node()
     // -----------------------------------------------------------------
     if (!transport_) {
         auto udp = std::make_shared<UdpTransport>();
-        if (!udp->init(remote_ip, static_cast<uint16_t>(remote_port))) {
+        if (!udp->init(remote_ip, static_cast<uint16_t>(remote_port),
+                       this->get_parameter("udp_interface").as_string())) {
             throw std::runtime_error("Failed to initialize STM32 UDP transport");
         }
         transport_ = udp;

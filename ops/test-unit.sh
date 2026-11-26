@@ -12,3 +12,7 @@ g++ -std=c++17 -Wall -Wextra -Wpedantic -pthread \
     "$repo/src/message_dispatcher.cpp" "$repo/src/universal_frame.cpp" \
     "$build/protocol/libdeos_protocol.a" -o "$build/unit-tests"
 "$build/unit-tests"
+g++ -std=c++17 -Wall -Wextra -Wpedantic -pthread -I"$repo/include" \
+    "$repo/test/udp_transport_test.cpp" "$repo/src/udp_transport.cpp" \
+    -o "$build/udp-transport-test"
+"$build/udp-transport-test"

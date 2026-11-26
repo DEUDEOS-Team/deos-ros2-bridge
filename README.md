@@ -122,7 +122,9 @@ source install/setup.bash
 ```
 
 ### Parametreler ile Başlatma (Tek Dosyadan Yönetim)
-Tüm parametreler `config/params.yaml` dosyası üzerinden yönetilir. 
+Tüm parametreler `config/params.yaml` dosyası üzerinden yönetilir.
+
+`udp_interface: "eth0"` STM32 UDP trafiğini Ethernet arayüzüne sabitler; Wi-Fi kullanılmaz. Pi ve STM32 UDP 5001 kullanır. Ethernet sonradan bağlandığında soket kaynak adresini gönderim sırasında seçer; bridge yeniden başlatılmadan iletişim devam edebilir. Arayüz mevcut değilse bridge başlatılmaz. Yerel loopback testlerinde bu ayarı `lo` yapın. 
 
 **Önerilen Yöntem (Launch Dosyası ile):**
 ```bash
