@@ -1,7 +1,7 @@
 # Raspberry Pi bridge güncelleyicisi
 
 `deos-bridge-update.timer`, açılıştan 90 saniye sonra ve her kontrol
-tamamlandıktan iki dakika sonra GitHub `DEUDEOS-Team/deos-ros2-bridge`
+tamamlandıktan bir dakika sonra GitHub `DEUDEOS-Team/deos-ros2-bridge`
 reposunun `main` dalını kontrol eder. Kod ve alt modüller Pi'deki
 `/home/deos/deos-bridge-updater/source` dizinine çekilir. Yeni commit için
 C++ birim testleri çalıştırılır ve Docker imajı Pi üzerinde derlenir. Başarılı başlangıç kontrolünden sonra
