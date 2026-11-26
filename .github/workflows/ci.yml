@@ -13,5 +13,10 @@ jobs:
           submodules: recursive
       - name: Run C++ unit tests
         run: bash ops/test-unit.sh
+      - name: Run mode manager tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y python3-yaml
+          /usr/bin/python3 -m unittest discover -s ops/tests -v
       - name: Build ROS 2 bridge image
         run: docker build -t deos-ros-bridge:ci .

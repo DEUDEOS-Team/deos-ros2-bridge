@@ -1,0 +1,17 @@
+[Unit]
+Description=DEOS developer and production automation manager
+After=NetworkManager.service docker.service
+Wants=NetworkManager.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /usr/local/lib/deos/mode.py serve
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=deos
+RuntimeDirectoryMode=0755
+StateDirectory=deos
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

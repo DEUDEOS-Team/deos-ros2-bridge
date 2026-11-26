@@ -1,0 +1,12 @@
+mode: developer
+developer:
+  bridge_update:
+    enabled: true
+    interval_seconds: 60
+  wifi:
+    enabled: true
+    interface: wlan0
+    interval_seconds: 30
+    connect_timeout_seconds: 20
+    recover_after_failed_cycles: 3
+    recovery_cooldown_seconds: 300
